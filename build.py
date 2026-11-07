@@ -80,6 +80,15 @@ MAX_PROGRAMMES = 25
 # Widths of the converted photos, in pixels.
 IMAGE_WIDTHS = (800, 1200)
 
+# Fonts: the University's Adobe Fonts kit (Freight Display, Freight Text and
+# Freight Sans), the same one concerts.leeds.ac.uk uses. Freight is licensed
+# through Adobe, so it can only be used through a kit like this, not copied.
+# Set ADOBE_FONTS_KIT to "" (here or as an environment variable) to use only the
+# free fonts (Playfair Display and system fonts), which are also the fallback.
+ADOBE_FONTS_KIT = os.environ.get("ADOBE_FONTS_KIT", "vlw5ilb")
+if not re.fullmatch(r"[a-z0-9]{0,20}", ADOBE_FONTS_KIT):
+    raise SystemExit(f"ADOBE_FONTS_KIT should be an Adobe Fonts kit ID, not {ADOBE_FONTS_KIT!r}")
+
 UOL_LOGO = (ROOT / "assets" / "uol-logo.svg").read_text(encoding="utf-8").replace(
     "<svg ", '<svg class="uol-logo" role="img" aria-label="University of Leeds" focusable="false" ', 1
 )
@@ -398,11 +407,16 @@ def has_text(line: list[Run]) -> bool:
     return bool(re.search(r"\w", text))
 
 
+def typographic(text: str) -> str:
+    """Curly apostrophes inside words (Freight shows a straight one as a prime)."""
+    return re.sub(r"(?<=\w)'(?=\w)", "’", text)
+
+
 def tidy_line(line: list[Run]) -> list[Run]:
     """Collapse whitespace, move spaces outside formatting, merge runs."""
     pieces: list[Run] = []
     for run in line:
-        text = re.sub(r"\s+", " ", run.text)
+        text = typographic(re.sub(r"\s+", " ", run.text))
         if not text:
             continue
         if run.fmt != PLAIN and text.strip() != text:
@@ -797,7 +811,7 @@ def parse_listing(markup: str) -> list[Concert]:
         concerts.append(
             make_concert(
                 article_id.removeprefix("event-"),
-                link.text(),
+                typographic(link.text()),
                 urllib.parse.urljoin(SITE, link.attrs.get("href", "")),
                 date,
                 time_text,
@@ -850,7 +864,7 @@ def add_event_details(fetch: Fetch, concert: Concert) -> None:
     root = parse_html(fetch_text(fetch, concert.url))
     title = root.find("h1", cls="page-heading__title")
     if title and title.text():
-        concert.title = title.text()
+        concert.title = typographic(title.text())
     for group in root.find_all(cls="uol-info-list__group"):
         term, data = group.find("dt"), group.find("dd")
         if not term or not data:
@@ -1271,7 +1285,7 @@ def render_programme(
         )
         if part
     ) or (
-        '<p class="pending">The programme for this concert hasn\'t been published yet. '
+        '<p class="pending">The programme for this concert hasn’t been published yet. '
         "Please check back closer to the day.</p>"
     )
     data = f'data-concert="{esc(concert.id)}" ' if switchable else 'data-programme '
@@ -1331,6 +1345,19 @@ def render_upcoming_item(concert: Concert, root: str, visible: bool) -> str:
     )
 
 
+def font_links(root: str) -> str:
+    """Load Freight from Adobe Fonts, or preload the free fallback heading font."""
+    if ADOBE_FONTS_KIT:
+        return (
+            '<link rel="preconnect" href="https://use.typekit.net" crossorigin>\n'
+            f'<link rel="stylesheet" href="https://use.typekit.net/{ADOBE_FONTS_KIT}.css">'
+        )
+    return (
+        f'<link rel="preload" href="{root}assets/fonts/playfair-display-latin-600-normal.woff2" '
+        'as="font" type="font/woff2" crossorigin>'
+    )
+
+
 def render_page(
     *,
     root: str,
@@ -1367,6 +1394,7 @@ def render_page(
             "body_class": body_class,
             "generated_iso": iso(now),
             "asset_version": ASSET_VERSION,
+            "font_links": font_links(root),
             "header": fill(template("header.html"), values),
             "footer": fill(template("footer.html"), values),
             "main": main,
@@ -1400,8 +1428,8 @@ def build_home(concerts: list[Concert], now: dt.datetime) -> str:
 <section class="narrow empty" id="empty"{" hidden" if current else ""}>
   <p class="status">Programme notes</p>
   <h1 class="prog-title">No concert today</h1>
-  <p>Notes for the next concert will appear here automatically. In the meantime, see what's coming up.</p>
-  <p><a class="btn btn-primary" href="events/">What's on</a></p>
+  <p>Notes for the next concert will appear here automatically. In the meantime, see what’s coming up.</p>
+  <p><a class="btn btn-primary" href="events/">What’s on</a></p>
 </section>"""
     coming_up = f"""
 <aside class="coming-up" id="upcoming" data-show="{UPCOMING_SHOWN}" aria-labelledby="upcoming-heading"{"" if len(later) > skip else " hidden"}>
@@ -1415,8 +1443,8 @@ def build_home(concerts: list[Concert], now: dt.datetime) -> str:
 </aside>"""
     return render_page(
         root="",
-        title=f"Today's programme · {SERIES_FULL_NAME}",
-        description="Programme notes for today's concert in the University of Leeds International Concert Series.",
+        title=f"Today’s programme · {SERIES_FULL_NAME}",
+        description="Programme notes for today’s concert in the University of Leeds International Concert Series.",
         main=articles + empty,
         after_main=coming_up,
         now=now,
@@ -1430,7 +1458,7 @@ def build_events(concerts: list[Concert], now: dt.datetime) -> str:
     main = f"""
 <section class="wide page-intro">
   <p class="kicker">{SERIES_NAME}</p>
-  <h1 class="page-title">What's on</h1>
+  <h1 class="page-title">What’s on</h1>
   <p class="lead">Concerts at the Clothworkers Centenary Concert Hall. Choose a concert to read its programme, or book tickets through Open Up.</p>
 </section>
 <section class="wide">
@@ -1441,7 +1469,7 @@ def build_events(concerts: list[Concert], now: dt.datetime) -> str:
 </section>"""
     return render_page(
         root="../",
-        title=f"What's on · {SERIES_FULL_NAME}",
+        title=f"What’s on · {SERIES_FULL_NAME}",
         description="Upcoming concerts in the University of Leeds International Concert Series, with programmes and tickets.",
         main=main,
         now=now,
@@ -1465,9 +1493,9 @@ def build_not_found(site_url: str, now: dt.datetime) -> str:
     main = """
 <section class="narrow empty">
   <p class="status">Page not found</p>
-  <h1 class="prog-title">This page isn't here</h1>
-  <p>Programmes are removed once a concert has finished. Today's programme and all upcoming concerts are a tap away.</p>
-  <p class="actions"><a class="btn btn-primary" href="{root}">Today's programme</a> <a class="btn btn-quiet" href="{root}events/">What's on</a></p>
+  <h1 class="prog-title">This page isn’t here</h1>
+  <p>Programmes are removed once a concert has finished. Today’s programme and all upcoming concerts are a tap away.</p>
+  <p class="actions"><a class="btn btn-primary" href="{root}">Today’s programme</a> <a class="btn btn-quiet" href="{root}events/">What’s on</a></p>
 </section>""".replace("{root}", site_url)
     return render_page(root=site_url, title=f"Page not found · {SERIES_FULL_NAME}",
                        description="Page not found.", main=main, now=now)
@@ -1491,6 +1519,7 @@ def write_qr_and_poster(site_url: str, out_dir: Path) -> None:
             "site_url": esc(site_url),
             "site_url_short": esc(re.sub(r"^https?://|/$", "", site_url)),
             "uol_logo": UOL_LOGO,
+            "font_links": font_links(""),
         },
     )
     (out_dir / "poster.html").write_text(poster, encoding="utf-8")

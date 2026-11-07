@@ -222,6 +222,7 @@ class NotesTests(unittest.TestCase):
     def test_quotes_stay_as_text(self):
         notes = notes_for("toby-shaer-archie-moss-and-jack-warnock")
         self.assertIn("Robert McMillen, The Irish News</p>", notes.about_html)
+        self.assertIn("Jack Warnock’s voice", notes.about_html)  # curly apostrophe
 
     def test_outlook_safe_links_are_unwrapped(self):
         html = build.render_notes(
@@ -402,6 +403,23 @@ class BuildTests(unittest.TestCase):
         first, _, _ = self.run_build(london(2026, 11, 7, 12, 0))
         second, _, _ = self.run_build(london(2026, 11, 7, 12, 30))
         self.assertEqual((first / "build-hash.txt").read_text(), (second / "build-hash.txt").read_text())
+
+    def test_freight_fonts_from_adobe(self):
+        out, page, _ = self.run_build(london(2026, 11, 7, 12))
+        self.assertIn(f'href="https://use.typekit.net/{build.ADOBE_FONTS_KIT}.css"', page)
+        css = (out / "assets" / "site.css").read_text()
+        for family in ("freight-display-pro", "freight-text-pro", "freight-sans-pro", "Playfair Display"):
+            self.assertIn(family, css)
+
+    def test_free_fonts_only(self):
+        original = build.ADOBE_FONTS_KIT
+        build.ADOBE_FONTS_KIT = ""
+        try:
+            _, page, _ = self.run_build(london(2026, 11, 7, 12))
+        finally:
+            build.ADOBE_FONTS_KIT = original
+        self.assertNotIn("typekit", page)
+        self.assertIn("playfair-display-latin-600-normal.woff2", page)
 
     def test_poster_and_qr_code(self):
         try:

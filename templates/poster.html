@@ -5,6 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Programme Poster · International Concert Series</title>
 <meta name="robots" content="noindex">
+{{font_links}}
 <style>
   @font-face {
     font-family: "Playfair Display";
@@ -17,8 +18,9 @@
     --muted: #55504a;
     --teal: #008384;
     --night: #121516;
-    --display: "Playfair Display", Georgia, serif;
-    --sans: system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+    --display: "freight-display-pro", "Playfair Display", Georgia, serif;
+    --serif: "freight-text-pro", Georgia, serif;
+    --sans: "freight-sans-pro", system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
   }
   @page { size: A4 portrait; margin: 0; }
   * { box-sizing: border-box; }
@@ -63,7 +65,7 @@
     text-transform: uppercase;
   }
   h1 { margin: 0 0 6mm; font: 600 44pt/1.05 var(--display); }
-  .lead { margin: 0 0 11mm; max-width: 140mm; color: var(--muted); font: 400 16pt/1.4 Georgia, serif; }
+  .lead { margin: 0 0 11mm; max-width: 140mm; color: var(--muted); font: 400 16pt/1.4 var(--serif); }
   .qr { width: 100mm; height: 100mm; padding: 4mm; border: 0.6mm solid var(--teal); border-radius: 5mm; }
   .qr .qr-code { width: 100%; height: 100%; display: block; }
   .url { margin: 7mm 0 0; font: 600 13pt/1.3 var(--sans); word-break: break-all; }
@@ -93,12 +95,12 @@
       <span class="series">International<br>Concert Series</span>
     </header>
     <main class="content">
-      <p class="kicker">Today's concert</p>
+      <p class="kicker">Today’s concert</p>
       <h1>Programme</h1>
-      <p class="lead">Scan with your phone's camera for the programme, artists and repertoire, plus what's on next.</p>
+      <p class="lead">Scan with your phone’s camera for the programme, artists and repertoire, plus what’s on next.</p>
       <div class="qr" role="img" aria-label="QR code linking to {{site_url}}">{{qr_svg}}</div>
       <p class="url">{{site_url_short}}</p>
-      <p class="thanks">We've gone paper-free to cut waste. Thank you for helping. Please keep your phone on silent and your screen dimmed during the performance.</p>
+      <p class="thanks">We’ve gone paper-free to cut waste. Thank you for helping. Please keep your phone on silent and your screen dimmed during the performance.</p>
     </main>
   </div>
   <p class="note">Print this page (A4) for the foyer, or scale it down for seat and table cards. The QR code never changes, so it can be laminated and reused.</p>

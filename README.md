@@ -24,7 +24,7 @@ These addresses work once the one-time setup below is done.
   5. **Notes & biographies** (or **About the concert** when there's no list of works),
   6. a **Next event** panel advertising the following concert, with its own **Book tickets** button.
 - **Watch live** is in the menu on every page. It goes to `youtube.com/@uolconcerts/live`, which YouTube points to the current stream (or the next scheduled one).
-- University of Leeds and International Concert Series branding throughout: the official University logo, the series teal (#008384) and the series tower icon as the browser/home-screen icon.
+- University of Leeds and International Concert Series branding throughout: the official University logo, the University's **Freight** typefaces, the series teal (#008384) and the series tower icon as the browser/home-screen icon.
 
 ### Where the information comes from
 
@@ -55,14 +55,24 @@ The home page contains the next four concerts, and a tiny script picks the right
 
 - It follows the phone's dark mode, and there's a light/dark button; dark mode also dims photos. A text-size button offers three sizes. Both settings are remembered on that phone only.
 - Pages are small static files: 15–40 KB each, plus 28 KB of shared styles and script, and photos converted to WebP (around 40–70 KB each, compared with 300–600 KB originals).
-- One self-hosted heading font (Playfair Display, 23 KB). No cookies, trackers or third-party scripts.
+- No cookies and no third-party scripts.
+
+### Fonts
+
+The site uses the University's typefaces: **Freight Display** for titles, **Freight Text** for programme notes and **Freight Sans** for labels and buttons. They come from the University's Adobe Fonts kit (`vlw5ilb`), the same one concerts.leeds.ac.uk uses. Freight is licensed through Adobe, so it can only be used through a kit like this, never copied into the site.
+
+- Adobe counts page views for licensing, so visitors' browsers also load a tiny file from `p.typekit.net`.
+- If the kit can't be used (blocked, or switched off), the site automatically falls back to **Playfair Display** (free, stored in the site) and system fonts.
+- Please check with the University's web team that it's fine to use their kit on this site. If they'd rather you had your own, create an Adobe Fonts web project with Freight Display, Text and Sans (regular and semibold, with italics), then put its kit ID in `ADOBE_FONTS_KIT` at the top of `build.py`. Set it to `""` to use the free fonts only.
 
 ## One-time setup
 
-1. **Make this the `main` branch.** The work is on branch `claude/concert-programme-auto-update-0fluq1`. Since it's the only branch, the simplest option is to rename it to `main` (on GitHub: *Branches* → ⋯ → *Rename branch*). Scheduled runs only happen on the default branch.
-2. **Check the repository's visibility.** GitHub Pages is free for **public** repositories. A private repository needs a paid GitHub plan. Nothing in this repository is secret.
-3. **Turn on GitHub Pages:** *Settings → Pages → Build and deployment → Source:* **GitHub Actions**.
-4. **Run it once:** *Actions → Update programme notes → Run workflow*.
+Do these in this order:
+
+1. **Make the repository public** (done). GitHub Pages is free for public repositories.
+2. **Make `main` the default branch:** *Settings → General → Default branch* → switch to **main**. Scheduled updates only run on the default branch, and Pages only accepts updates from it.
+3. **Turn on GitHub Pages:** *Settings → Pages → Build and deployment → Source:* **GitHub Actions**. There's no need to pick a branch or folder.
+4. **Run it once:** *Actions → Update programme notes → Run workflow* (branch: **main**). After about a minute the site is live.
 5. **Print the poster** from `/poster.html`, or use `/qr.png` / `/qr.svg` on seat cards, screens or slides. The QR code never changes, so laminated copies can be reused.
 
 *Optional:* to use a university address instead (e.g. `programme.concerts.leeds.ac.uk`), ask IT for a DNS `CNAME` record pointing to `cbradburne.github.io`, then add it under *Settings → Pages → Custom domain*. Do this **before** printing QR codes.
@@ -97,6 +107,7 @@ Settings are at the top of `build.py`:
 | `EMBEDDED_CONCERTS` | 4 | Concerts built into the home page, so it keeps switching correctly even if updates stop for a while |
 | `UPCOMING_SHOWN` | 4 | Concerts under "Later in the season" on the home page |
 | `IMAGE_WIDTHS` | 800, 1200 | Sizes of the converted photos |
+| `ADOBE_FONTS_KIT` | `vlw5ilb` | Adobe Fonts kit for Freight (`""` = free fonts only) |
 
 Colours and fonts are at the top of `templates/site.css`. To change how often it updates, edit the `cron` line in `.github/workflows/publish.yml` (times are in UTC).
 
@@ -117,7 +128,7 @@ python -m unittest discover -s tests   # tests use saved copies of the real page
 | --- | --- |
 | `build.py` | Reads the concert site, Open Up and YouTube, and writes the site |
 | `templates/` | Page layout (`base.html`, `header.html`, `footer.html`), styles (`site.css`), the small script (`app.js`) and the poster |
-| `assets/` | University logo, series icon, and the Playfair Display font (SIL Open Font Licence, `assets/fonts/OFL.txt`) |
+| `assets/` | University logo, series icon, and the fallback Playfair Display font (SIL Open Font Licence, `assets/fonts/OFL.txt`) |
 | `tests/` | Automated tests, using trimmed copies of the real pages (saved 7 Nov 2026) |
 | `.github/workflows/publish.yml` | Scheduled build and publish to GitHub Pages |
 | `.github/workflows/keepalive.yml` | Stops GitHub pausing the schedule in quiet periods |
