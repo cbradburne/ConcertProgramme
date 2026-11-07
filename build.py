@@ -56,6 +56,7 @@ WHATS_ON_URL = SITE + "/events/"
 LISTING_URL = SITE + "/events/?q=&post_type=tk_events&date-type={date_type}"
 OPENUP = "https://openup.leeds.ac.uk"
 OPENUP_WHATS_ON = OPENUP + "/whats-on/"
+BOX_OFFICE = "https://buytickets.at/leedsuniversity72"  # the series' Ticket Tailor box office
 YOUTUBE_CHANNEL = "https://www.youtube.com/@uolconcerts"
 YOUTUBE_LIVE = YOUTUBE_CHANNEL + "/live"  # YouTube sends this to the current or next stream
 YOUTUBE_FEED = "https://www.youtube.com/feeds/videos.xml?channel_id=UCkFIqzjc8oUuhMBcEfCGZQA"
@@ -704,7 +705,7 @@ class Concert:
     venue: str = ""
     admission: str = ""
     doors: str = ""
-    ticket_url: str = ""  # the concert site's own "Book tickets" link
+    ticket_url: str = ""  # straight to this concert's ticket selection at the box office
     openup_url: str = ""  # the event on openup.leeds.ac.uk
     stream_url: str = ""  # this concert's YouTube livestream, when scheduled
     image_urls: list[str] = field(default_factory=list)  # best first
@@ -719,7 +720,8 @@ class Concert:
 
     @property
     def booking_url(self) -> str:
-        return self.openup_url or self.ticket_url
+        """Ticket buttons go straight to the box office; Open Up only if there's no box office link."""
+        return self.ticket_url or self.openup_url
 
 
 TIME_RE = re.compile(
@@ -860,6 +862,24 @@ def without_size_suffix(url: str) -> str:
     return re.sub(r"-\d+x\d+(?=\.\w+$)", "", url)
 
 
+BOX_OFFICE_RE = re.compile(
+    r"https?://(?:buytickets\.at|(?:www\.)?tickettailor\.com/events)/(?P<box>[\w-]+)/(?P<event>\d+)"
+)
+
+
+def box_office_link(url: str) -> str:
+    """A Ticket Tailor event link, made to open ticket selection directly.
+
+    'buytickets.at/leedsuniversity72/2255364' shows an event page first;
+    adding '/select-date' (as Open Up's "Book now" does) goes straight to
+    choosing tickets. Returns "" for links that aren't to the box office.
+    """
+    match = BOX_OFFICE_RE.match(url or "")
+    if not match:
+        return ""
+    return f"https://buytickets.at/{match['box']}/{match['event']}/select-date"
+
+
 def add_event_details(fetch: Fetch, concert: Concert) -> None:
     root = parse_html(fetch_text(fetch, concert.url))
     title = root.find("h1", cls="page-heading__title")
@@ -878,12 +898,12 @@ def add_event_details(fetch: Fetch, concert: Concert) -> None:
         elif label == "doors":
             concert.doors = re.sub(r"^(open\s+)?(from\s+)?", "", data.text(), flags=re.I)
         link = data.find("a")
-        if link and "buytickets" in link.attrs.get("href", "") and not concert.ticket_url:
-            concert.ticket_url = link.attrs["href"]
+        if link and not concert.ticket_url:
+            concert.ticket_url = box_office_link(link.attrs.get("href", ""))
     for button in root.find_all("a", cls="uol-button"):
         href = clean_href(button.attrs.get("href"))
         if href and not concert.ticket_url and "book" in button.text().lower():
-            concert.ticket_url = href
+            concert.ticket_url = box_office_link(href) or href
     image = root.find("img", cls="uol-featured-image__img")
     if image and image.attrs.get("src"):
         src = urllib.parse.urljoin(SITE, image.attrs["src"])
@@ -1381,6 +1401,7 @@ def render_page(
         "instagram": INSTAGRAM,
         "facebook": FACEBOOK,
         "openup": OPENUP + "/",
+        "box_office": BOX_OFFICE,
         "concert_site": SITE + "/",
         "uol_logo": UOL_LOGO,
         "generated": generated,
@@ -1459,7 +1480,7 @@ def build_events(concerts: list[Concert], now: dt.datetime) -> str:
 <section class="wide page-intro">
   <p class="kicker">{SERIES_NAME}</p>
   <h1 class="page-title">What’s on</h1>
-  <p class="lead">Concerts at the Clothworkers Centenary Concert Hall. Choose a concert to read its programme, or book tickets through Open Up.</p>
+  <p class="lead">Concerts at the Clothworkers Centenary Concert Hall. Choose a concert to read its programme or book tickets.</p>
 </section>
 <section class="wide">
   <ol class="cards" id="event-list">
@@ -1571,10 +1592,10 @@ def build(
         if images:
             concert.picture = prepare_picture(fetch, concert.image_urls, out_dir, cache_dir)
         log.info(
-            "  %s  %-45s tickets: %-6s stream: %s",
+            "  %s  %-45s tickets: %-10s stream: %s",
             concert.start.strftime("%a %d %b %H:%M"),
             concert.title[:45],
-            "OpenUp" if concert.openup_url else ("box" if concert.ticket_url else "-"),
+            "box office" if concert.ticket_url else ("Open Up" if concert.openup_url else "-"),
             "yes" if concert.stream_url else "-",
         )
 

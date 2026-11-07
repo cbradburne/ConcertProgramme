@@ -18,7 +18,7 @@ These addresses work once the one-time setup below is done.
 - **What's on** lists every scheduled concert. Each has a photo, date and time, artists and price, with buttons to **book tickets** and read its **programme**. The next concert is featured at the top.
 - **A programme page for every concert** (`/programmes/<name>/`). They're all set out the same way:
   1. the photo, title, date, start and end time, venue, door time and ticket price,
-  2. **Book tickets** (through Open Up) and, when one is scheduled, **Watch the livestream**,
+  2. **Book tickets** (straight to the box office) and, when one is scheduled, **Watch the livestream**,
   3. **Artists**: names and instruments,
   4. **Repertoire**: composer, dates and work, as in a printed programme,
   5. **Notes & biographies** (or **About the concert** when there's no list of works),
@@ -31,11 +31,11 @@ These addresses work once the one-time setup below is done.
 | What | Source |
 | --- | --- |
 | Concerts, dates, times, venue, price, notes | Each event page on concerts.leeds.ac.uk |
-| Ticket links | The concert's page on **openup.leeds.ac.uk**, matched by date and title. If a concert isn't on Open Up yet, the button uses the "Book Tickets" link from the concert site instead. |
+| Ticket links | The "Book Tickets" link on the concert's page on concerts.leeds.ac.uk. It goes to the series' Ticket Tailor box office, with `/select-date` added (as Open Up's "Book now" does) so it opens ticket selection directly. The concert's Open Up page is used only if there's no box office link. |
 | Photos | Open Up's **full-size** photo, found by removing the size from the end of the file name (e.g. `photo-600x400.webp` → `photo.webp`, 1507×1000). If there's none, the concert site's event header is used. That one is already full size, because its original upload is only 800×400. |
 | Livestream links | The UOLConcerts YouTube channel's feed, matched by title for streams scheduled for that concert |
 
-Open Up and YouTube are extras. If either can't be reached, the site still updates using the concert site's own links.
+Open Up and YouTube are extras: Open Up supplies the larger photos, and YouTube the livestream links. If either can't be reached, the site still updates without them.
 
 ### How "today's programme" switches
 
@@ -92,7 +92,8 @@ Nothing extra needs filling in, but these patterns are recognised and laid out l
 - Put **one work per line**, with the composer in **bold**, then a dash, then the work.
 - Everything after the last work appears under **Notes & biographies**.
 - Pictures and logos inside the text are left out to keep pages small. YouTube links become "Watch the video".
-- For a concert to have **Open Up** ticket links, give it the **same date and a similar title** on Open Up.
+- **Book tickets** buttons use the box office link in the event's details on the concert site, so make sure each event has one.
+- For a concert to use **Open Up's larger photo**, give it the **same date and a similar title** on Open Up.
 - For a programme to link to **its own livestream**, give the YouTube stream the **same title** as the concert. Otherwise the menu's *Watch live* still works.
 
 ## Changing the behaviour

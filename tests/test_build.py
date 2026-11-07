@@ -125,7 +125,7 @@ class ListingTests(unittest.TestCase):
         self.assertEqual(concert.venue, "Clothworkers Centenary Concert Hall")
         self.assertEqual(concert.admission, "Pay what you can")
         self.assertEqual(concert.doors, "12:15pm")
-        self.assertEqual(concert.ticket_url, "https://buytickets.at/leedsuniversity72/2255364")
+        self.assertEqual(concert.ticket_url, "https://buytickets.at/leedsuniversity72/2255364/select-date")
         self.assertTrue(concert.image_urls[0].endswith("Toby-Shaer-Archie-Moss-Jack-Warnock-event-header.png"))
 
 
@@ -277,6 +277,27 @@ class ImageTests(unittest.TestCase):
                 self.assertEqual(build.without_size_suffix(url), expected)
 
 
+class BoxOfficeTests(unittest.TestCase):
+    def test_links_open_ticket_selection(self):
+        cases = {
+            "https://buytickets.at/leedsuniversity72/2255364": "https://buytickets.at/leedsuniversity72/2255364/select-date",
+            "https://buytickets.at/leedsuniversity72/2255364/select-date": "https://buytickets.at/leedsuniversity72/2255364/select-date",
+            "https://www.tickettailor.com/events/leedsuniversity72/2418052": "https://buytickets.at/leedsuniversity72/2418052/select-date",
+            "https://openup.leeds.ac.uk/events/marco-fusi/": "",
+            "": "",
+        }
+        for url, expected in cases.items():
+            with self.subTest(url=url):
+                self.assertEqual(build.box_office_link(url), expected)
+
+    def test_open_up_only_without_a_box_office_link(self):
+        concert = build.make_concert("1", "X", "u", dt.date(2026, 11, 20), "7:30pm")
+        concert.openup_url = "https://openup.leeds.ac.uk/events/x/"
+        self.assertEqual(concert.booking_url, concert.openup_url)
+        concert.ticket_url = "https://buytickets.at/leedsuniversity72/1/select-date"
+        self.assertEqual(concert.booking_url, concert.ticket_url)
+
+
 class OpenUpAndYouTubeTests(unittest.TestCase):
     def setUp(self):
         self.concerts = build.parse_listing(fixture("listing-current.html"))
@@ -343,19 +364,21 @@ class BuildTests(unittest.TestCase):
         page = (out / "programmes" / "toby-shaer-archie-moss-and-jack-warnock" / "index.html").read_text()
         for heading in ('>Artists</h2>', '>About the concert</h2>'):
             self.assertIn(heading, page)
-        self.assertIn('href="https://openup.leeds.ac.uk/events/toby-shaer-archie-moss-and-jack-warnock/"', page)
+        # Ticket buttons go straight to ticket selection at the box office.
+        self.assertIn('href="https://buytickets.at/leedsuniversity72/2255364/select-date"', page)
+        self.assertNotIn('href="https://openup.leeds.ac.uk/events/toby-shaer', page)
         self.assertIn('href="https://www.youtube.com/watch?v=6mF3M7acbGE"', page)
         self.assertIn(build.YOUTUBE_LIVE, page)
         # "Next event" advertises the following concert with a ticket button.
         band = page[page.index('class="next-band"'):]
         self.assertIn("Dongyang Gozupa", band)
-        self.assertIn('href="https://openup.leeds.ac.uk/events/dongyang-gozupa/"', band)
+        self.assertIn('href="https://buytickets.at/leedsuniversity72/2359314/select-date"', band)
 
         pixels = (out / "programmes" / "pixels-ensemble-6" / "index.html").read_text()
         for heading in ('>Artists</h2>', '>Repertoire</h2>', '>Notes &amp; biographies</h2>'):
             self.assertIn(heading, pixels)
-        # Not on Open Up yet: falls back to the concert site's box office link.
-        self.assertIn("buytickets.at/leedsuniversity72", pixels)
+        # Not on Open Up: still goes straight to the box office.
+        self.assertIn("buytickets.at/leedsuniversity72/2510089/select-date", pixels)
 
     def test_whats_on_lists_every_concert(self):
         out, _, concerts = self.run_build(london(2026, 11, 7, 12))
