@@ -1,0 +1,85 @@
+name: Update programme notes
+
+on:
+  schedule:
+    # Every 30 minutes, 07:00-22:59 UTC (7am-11pm in winter, 8am-midnight in summer).
+    # The page itself switches between concerts at the right time, so these runs
+    # only need to pick up new concerts and edits to the notes.
+    - cron: "7,37 7-22 * * *"
+  push:
+    branches: [main]
+  workflow_dispatch: # "Run workflow" button: update straight away
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    outputs:
+      changed: ${{ steps.compare.outputs.changed }}
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Install
+        run: pip install -r requirements.txt
+
+      - name: Test
+        run: python -m unittest discover -s tests
+
+      - name: Find the page address
+        id: pages
+        uses: actions/configure-pages@v6
+
+      - name: Reuse converted images
+        uses: actions/cache@v6
+        with:
+          path: .image-cache
+          key: images-${{ github.run_id }}
+          restore-keys: images-
+
+      - name: Build the page from concerts.leeds.ac.uk
+        run: python build.py --out _site --cache .image-cache --site-url "${{ steps.pages.outputs.base_url }}/"
+
+      - name: Compare with the published page
+        id: compare
+        env:
+          LIVE_URL: ${{ steps.pages.outputs.base_url }}/
+          EVENT: ${{ github.event_name }}
+        run: |
+          changed=true
+          if [ "$EVENT" = "schedule" ] && curl -fsSL "$LIVE_URL" -o live.html \
+             && diff -q <(grep -v 'data-generated' live.html) <(grep -v 'data-generated' _site/index.html) >/dev/null; then
+            changed=false
+            echo "Nothing has changed since the last update."
+          fi
+          echo "changed=$changed" >> "$GITHUB_OUTPUT"
+
+      - name: Package the page
+        if: steps.compare.outputs.changed == 'true'
+        uses: actions/upload-pages-artifact@v5
+        with:
+          path: _site
+
+  deploy:
+    needs: build
+    if: needs.build.outputs.changed == 'true'
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Publish to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v5

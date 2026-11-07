@@ -1,0 +1,61 @@
+<!doctype html>
+<html lang="en-GB">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Programme Notes · University of Leeds Concert Series</title>
+<meta name="description" content="Programme notes for today's concert in the University of Leeds Concert Series.">
+<meta name="robots" content="noindex">
+<meta name="color-scheme" content="light dark">
+<meta name="theme-color" content="#f6f2ea" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#121110" media="(prefers-color-scheme: dark)">
+<meta name="generated" content="{{generated_iso}}" data-generated>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%238c2232'/%3E%3Cpath d='M20 6v13.2a4 4 0 1 1-2-3.46V10l-6 1.5v9.7a4 4 0 1 1-2-3.46V8.5z' fill='%23fff'/%3E%3C/svg%3E">
+<script>try{var d=document.documentElement,t=localStorage.getItem("theme"),s=localStorage.getItem("size");if(t)d.setAttribute("data-theme",t);if(s)d.setAttribute("data-size",s)}catch(e){}</script>
+<style>
+{{css}}
+</style>
+</head>
+<body>
+<header class="masthead">
+  <div class="wrap masthead-inner">
+    <a class="brand" href="{{whats_on}}">University of Leeds<span>Concert Series</span></a>
+    <div class="tools">
+      <button class="tool" type="button" id="size-toggle" aria-label="Text size: standard. Tap to enlarge.">
+        <span aria-hidden="true" class="size-glyph"><small>A</small>A</span>
+      </button>
+      <button class="tool" type="button" id="theme-toggle" aria-label="Switch to dark mode">
+        <svg aria-hidden="true" class="icon icon-moon" viewBox="0 0 24 24" width="20" height="20"><path d="M20.5 14.6A8.5 8.5 0 0 1 9.4 3.5a8.5 8.5 0 1 0 11.1 11.1Z" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/></svg>
+        <svg aria-hidden="true" class="icon icon-sun" viewBox="0 0 24 24" width="20" height="20"><circle cx="12" cy="12" r="4.2" fill="none" stroke="currentColor" stroke-width="1.8"/><path d="M12 2.5v2.2M12 19.3v2.2M2.5 12h2.2M19.3 12h2.2M5.3 5.3l1.5 1.5M17.2 17.2l1.5 1.5M5.3 18.7l1.5-1.5M17.2 6.8l1.5-1.5" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>
+      </button>
+    </div>
+  </div>
+</header>
+
+<main id="main" class="wrap">
+{{concerts}}
+  <section class="empty" id="empty"{{empty_hidden}}>
+    <h1 class="title">Programme notes</h1>
+    <p>There are no programme notes to show just now. Notes for the next concert will appear here automatically.</p>
+    <p><a href="{{whats_on}}">See what's on at the Concert Series</a></p>
+  </section>
+</main>
+
+<aside class="upcoming wrap" id="upcoming" data-show="{{upcoming_shown}}" aria-labelledby="upcoming-heading"{{upcoming_hidden}}>
+  <h2 id="upcoming-heading">Coming up</h2>
+  <ol>
+{{upcoming}}
+  </ol>
+  <a class="all" href="{{whats_on}}">Full What's On listing</a>
+</aside>
+
+<footer class="wrap site-footer">
+  <p>Thank you for helping us save paper. This page always shows the notes for the current concert, so you can use the same link every time.</p>
+  <p data-generated>Programme notes from <a href="{{whats_on}}">concerts.leeds.ac.uk</a>. Updated {{generated}}.</p>
+</footer>
+
+<script>
+{{js}}
+</script>
+</body>
+</html>

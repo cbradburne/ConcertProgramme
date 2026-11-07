@@ -1,0 +1,4 @@
+# Optional extras for build.py (it still works without them):
+pillow==12.3.0   # shrinks header images to small WebP files
+segno==1.6.6     # draws the QR code for the poster
+tzdata==2026.5   # time zone data, for computers without it (e.g. Windows)

@@ -1,0 +1,32 @@
+name: Keep the schedule running
+
+# GitHub pauses scheduled workflows in public repositories after 60 days
+# without any commits (e.g. over the summer). If the repository has been
+# quiet for 50 days, this makes a one-line commit so updates keep running.
+
+on:
+  schedule:
+    - cron: "23 4 * * 1" # Mondays
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  keepalive:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Commit if the repository has been quiet for 50 days
+        run: |
+          age=$(( ($(date +%s) - $(git log -1 --format=%ct)) / 86400 ))
+          echo "Last commit was $age day(s) ago."
+          if [ "$age" -ge 50 ]; then
+            date -u +%Y-%m-%d > .github/keepalive
+            git config user.name "github-actions[bot]"
+            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+            git add .github/keepalive
+            git commit -m "Keep the scheduled programme updates running"
+            git push
+          fi
