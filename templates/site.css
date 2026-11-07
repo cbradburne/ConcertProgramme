@@ -544,12 +544,26 @@ a:hover { text-decoration-thickness: 2px; }
   .card.is-next .actions { margin-top: 12px; }
 }
 
-.empty-list { margin: 0 0 64px; color: var(--muted); }
+/* ---------- Notices: no events, no concert today, page not found ---------- */
 
-/* ---------- Empty state ---------- */
-
-.empty { padding-top: 48px; padding-bottom: 48px; }
-.empty .status { color: var(--teal-text); }
+.notice { background: var(--night); color: var(--night-ink); }
+.notice-band { padding: 56px 0 64px; }
+.notice-panel {
+  margin: 28px 0 64px;
+  padding: 36px max(24px, 4vw) 40px;
+  border-top: 4px solid var(--teal);
+  border-radius: var(--radius);
+}
+.notice-title {
+  margin: 0 0 16px;
+  font: 600 clamp(2rem, 1.35rem + 3vw, 3.2rem)/1.08 var(--display);
+  text-wrap: balance;
+}
+.notice p { margin: 0 0 12px; max-width: 38rem; color: var(--night-muted); font-size: 1.125rem; }
+.notice .status { color: var(--teal-on-night); }
+.notice .notice-lead { color: var(--night-ink); font-size: 1.35rem; line-height: 1.4; }
+.notice a:not(.btn) { color: var(--teal-on-night); }
+.notice .actions { margin-top: 26px; }
 
 /* ---------- Footer ---------- */
 

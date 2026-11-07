@@ -351,7 +351,7 @@ class BuildTests(unittest.TestCase):
         self.assertEqual(page.count('class="programme"'), build.EMBEDDED_CONCERTS)
         self.assertEqual(self.visible_concerts(page), ["5520"])
         self.assertIn('data-default="Next concert">Today</p>', page)
-        self.assertIn('id="empty" hidden', page)
+        self.assertIn('id="empty" aria-labelledby="empty-title" hidden>', page)
         self.assertIn("International<br>Concert Series", page)
         self.assertIn('aria-label="University of Leeds"', page)
 
@@ -407,9 +407,24 @@ class BuildTests(unittest.TestCase):
             '<p class="search-results__count">No results</p></main>'
         )
         out, page, _ = self.run_build(london(2026, 11, 7), site=FakeSite(listing=listing))
-        self.assertIn('id="empty">', page)
+        events = (out / "events" / "index.html").read_text()
         self.assertNotIn('class="programme"', page)
-        self.assertIn('id="no-events">', (out / "events" / "index.html").read_text())
+        self.assertNotIn('<li class="card', events)
+        for html in (page, events):
+            # Shown (not hidden), with the message and a link to Open Up.
+            self.assertRegex(html, r'<section class="notice[^"]*" id="(empty|no-events)" aria-labelledby="[\w-]+">')
+            self.assertIn("No events currently listed", html)
+            self.assertIn("Join us again soon for our next event.", html)
+            self.assertIn("for other events across our campus.", html)
+            self.assertIn('href="https://openup.leeds.ac.uk/"', html)
+            self.assertIn('href="https://openup.leeds.ac.uk/whats-on/"', html)
+
+    def test_no_events_message_hidden_while_concerts_are_listed(self):
+        out, page, _ = self.run_build(london(2026, 11, 7, 12))
+        events = (out / "events" / "index.html").read_text()
+        self.assertIn('id="no-events" aria-labelledby="no-events-title" hidden>', events)
+        self.assertNotIn("No events currently listed", page)  # home uses its own fallback
+        self.assertIn('id="empty" aria-labelledby="empty-title" hidden>', page)
 
     def test_failed_download_stops_the_build(self):
         with self.assertRaises(build.BuildError):

@@ -1424,6 +1424,52 @@ def render_page(
     )
 
 
+def render_notice(
+    *,
+    element_id: str,
+    kicker: str,
+    title: str,
+    body: str,
+    actions: str,
+    heading: str = "h1",
+    hidden: bool = False,
+    band: bool = False,
+) -> str:
+    """A branded message panel: full-width on the home page, a card elsewhere."""
+    shape = "notice-band" if band else "notice-panel"
+    inner = '<div class="narrow notice-inner">' if band else '<div class="notice-inner">'
+    notice = f"""
+<section class="notice {shape}" id="{element_id}" aria-labelledby="{element_id}-title"{" hidden" if hidden else ""}>
+  {inner}
+    <p class="status">{kicker}</p>
+    <{heading} class="notice-title" id="{element_id}-title">{title}</{heading}>
+    {body}
+    <div class="actions">{actions}</div>
+  </div>
+</section>"""
+    return notice if band else f'<div class="wide">{notice}</div>'
+
+
+def render_no_events(root: str, element_id: str, *, heading: str, hidden: bool, band: bool) -> str:
+    """Shown when the concert site has no upcoming events (e.g. over the summer)."""
+    return render_notice(
+        element_id=element_id,
+        kicker=SERIES_NAME,
+        title="No events currently listed",
+        body=(
+            '<p class="notice-lead">Join us again soon for our next event.</p>\n'
+            f'    <p>Check <a {external(OPENUP + "/")}>openup.leeds.ac.uk</a> for other events across our campus.</p>'
+        ),
+        actions=(
+            f'<a class="btn btn-primary" {external(OPENUP_WHATS_ON)}>Events across campus</a>'
+            f'<a class="btn btn-secondary" {external(YOUTUBE_CHANNEL + "/streams")}>{PLAY_ICON}<span>Watch past concerts</span></a>'
+        ),
+        heading=heading,
+        hidden=hidden,
+        band=band,
+    )
+
+
 def build_home(concerts: list[Concert], now: dt.datetime) -> str:
     current = current_concert(concerts, now)
     embedded = concerts[:EMBEDDED_CONCERTS]
@@ -1445,13 +1491,20 @@ def build_home(concerts: list[Concert], now: dt.datetime) -> str:
         render_upcoming_item(c, "", skip <= index < skip + UPCOMING_SHOWN)
         for index, c in enumerate(later)
     )
-    empty = f"""
-<section class="narrow empty" id="empty"{" hidden" if current else ""}>
-  <p class="status">Programme notes</p>
-  <h1 class="prog-title">No concert today</h1>
-  <p>Notes for the next concert will appear here automatically. In the meantime, see what’s coming up.</p>
-  <p><a class="btn btn-primary" href="events/">What’s on</a></p>
-</section>"""
+    if not concerts:
+        # Nothing listed on the concert site at all (e.g. between seasons).
+        empty = render_no_events("", "empty", heading="h1", hidden=False, band=True)
+    else:
+        # Only seen if updates stop and every concert built into the page has passed.
+        empty = render_notice(
+            element_id="empty",
+            kicker="Programme",
+            title="No concert today",
+            body="<p>The programme for the next concert will appear here automatically.</p>",
+            actions='<a class="btn btn-primary" href="events/">What’s on</a>',
+            hidden=current is not None,
+            band=True,
+        )
     coming_up = f"""
 <aside class="coming-up" id="upcoming" data-show="{UPCOMING_SHOWN}" aria-labelledby="upcoming-heading"{"" if len(later) > skip else " hidden"}>
   <div class="narrow">
@@ -1482,12 +1535,12 @@ def build_events(concerts: list[Concert], now: dt.datetime) -> str:
   <h1 class="page-title">What’s on</h1>
   <p class="lead">Concerts at the Clothworkers Centenary Concert Hall. Choose a concert to read its programme or book tickets.</p>
 </section>
-<section class="wide">
+<section class="wide"{"" if concerts else " hidden"}>
   <ol class="cards" id="event-list">
 {cards}
   </ol>
-  <p class="empty-list" id="no-events"{" hidden" if concerts else ""}>No concerts are listed just now. Please check back soon.</p>
-</section>"""
+</section>
+{render_no_events("../", "no-events", heading="h2", hidden=bool(concerts), band=False)}"""
     return render_page(
         root="../",
         title=f"What’s on · {SERIES_FULL_NAME}",
@@ -1511,13 +1564,17 @@ def build_programme_page(concert: Concert, following: Concert | None, now: dt.da
 
 
 def build_not_found(site_url: str, now: dt.datetime) -> str:
-    main = """
-<section class="narrow empty">
-  <p class="status">Page not found</p>
-  <h1 class="prog-title">This page isn’t here</h1>
-  <p>Programmes are removed once a concert has finished. Today’s programme and all upcoming concerts are a tap away.</p>
-  <p class="actions"><a class="btn btn-primary" href="{root}">Today’s programme</a> <a class="btn btn-quiet" href="{root}events/">What’s on</a></p>
-</section>""".replace("{root}", site_url)
+    main = render_notice(
+        element_id="not-found",
+        kicker="Page not found",
+        title="This page isn’t here",
+        body="<p>Programmes are removed once a concert has finished. Today’s programme and all upcoming concerts are a tap away.</p>",
+        actions=(
+            f'<a class="btn btn-primary" href="{esc(site_url)}">Today’s programme</a>'
+            f'<a class="btn btn-secondary" href="{esc(site_url)}events/">What’s on</a>'
+        ),
+        band=True,
+    )
     return render_page(root=site_url, title=f"Page not found · {SERIES_FULL_NAME}",
                        description="Page not found.", main=main, now=now)
 
