@@ -398,6 +398,9 @@ class BuildTests(unittest.TestCase):
         self.assertIn("openstreetmap.org/export/embed.html", find_us)
         for heading in ("When you arrive", "Parking", "Accessibility", "Contact us", "From church to concert hall"):
             self.assertIn(heading, find_us)
+        # History from the Historic England list entry (1255691).
+        for fact in ("James Barlow Fraser", "1878–79", "Grade II listed", "list-entry/1255691"):
+            self.assertIn(fact, find_us)
         self.assertNotIn("{{", find_us)
         # Every page's footer links to it, relative to that page.
         self.assertIn('href="find-us/"', page)
