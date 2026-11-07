@@ -2,12 +2,13 @@
   "use strict";
 
   var root = document.documentElement;
-  var concerts = Array.prototype.slice.call(document.querySelectorAll("[data-concert]"));
-  var upcomingItems = Array.prototype.slice.call(document.querySelectorAll("[data-upcoming]"));
-  var upcoming = document.getElementById("upcoming");
-  var empty = document.getElementById("empty");
-  var loadedAt = Date.now();
+  var DAY = 24 * 60 * 60 * 1000;
   var STALE_AFTER = 6 * 60 * 60 * 1000; // reload a page left open for hours
+  var loadedAt = Date.now();
+
+  function all(selector) {
+    return Array.prototype.slice.call(document.querySelectorAll(selector));
+  }
 
   function time(el, name) {
     return Date.parse(el.getAttribute(name));
@@ -25,18 +26,34 @@
   })();
 
   // Same rules as status_label() in build.py.
-  function statusLabel(concert, now) {
-    var start = time(concert, "data-start");
-    if (now >= start && now < time(concert, "data-finish")) return "On now";
+  function statusLabel(el, now) {
+    var start = time(el, "data-start");
+    if (now >= start && now < time(el, "data-finish")) return "On now";
     var day = londonDay(start);
     if (day === londonDay(now)) return "Today";
-    if (day === londonDay(now + 24 * 60 * 60 * 1000)) return "Tomorrow";
-    return "Next concert";
+    if (day === londonDay(now + DAY)) return "Tomorrow";
+    return "";
   }
 
-  // Show the first concert that hasn't yet handed over to the next one.
-  function update() {
-    var now = Date.now();
+  function setStatus(container, now) {
+    var status = container.querySelector("[data-status]");
+    if (status) {
+      status.textContent = statusLabel(container, now) || status.getAttribute("data-default") || "";
+    }
+  }
+
+  // Home page: the concerts built into the page, the first unfinished one is shown.
+  var concerts = all("[data-concert]");
+  var empty = document.getElementById("empty");
+  var upcoming = document.getElementById("upcoming");
+  var upcomingItems = all("[data-upcoming]");
+  // A single programme page.
+  var programmes = all("[data-programme]");
+  // What's on.
+  var cards = all(".card[data-until]");
+  var noEvents = document.getElementById("no-events");
+
+  function updateHome(now) {
     var current = null;
     concerts.forEach(function (concert) {
       if (!current && time(concert, "data-until") > now) current = concert;
@@ -45,25 +62,47 @@
       concert.hidden = concert !== current;
     });
     if (empty) empty.hidden = !!current;
-    if (current) {
-      var status = current.querySelector("[data-status]");
-      if (status) status.textContent = statusLabel(current, now);
-    }
+    if (current) setStatus(current, now);
 
     if (!upcoming) return;
+    // "Coming up" skips the concert already advertised as "Next event".
     var limit = parseInt(upcoming.getAttribute("data-show"), 10) || 4;
+    var skip = current ? 1 : 0;
     var currentId = current ? current.getAttribute("data-concert") : null;
     var currentStart = current ? time(current, "data-start") : -Infinity;
+    var eligible = 0;
     var shown = 0;
     upcomingItems.forEach(function (item) {
-      var show = shown < limit &&
-        item.getAttribute("data-upcoming") !== currentId &&
+      var ok = item.getAttribute("data-upcoming") !== currentId &&
         time(item, "data-until") > now &&
         time(item, "data-start") >= currentStart;
+      if (ok) eligible += 1;
+      var show = ok && eligible > skip && shown < limit;
       item.hidden = !show;
       if (show) shown += 1;
     });
     upcoming.hidden = shown === 0;
+  }
+
+  function updateCards(now) {
+    var first = true;
+    cards.forEach(function (card) {
+      var finished = time(card, "data-until") <= now;
+      card.hidden = finished;
+      card.classList.toggle("is-next", !finished && first);
+      if (!finished) {
+        first = false;
+        setStatus(card, now);
+      }
+    });
+    if (noEvents && cards.length) noEvents.hidden = !first;
+  }
+
+  function update() {
+    var now = Date.now();
+    if (concerts.length || empty) updateHome(now);
+    programmes.forEach(function (programme) { setStatus(programme, now); });
+    if (cards.length) updateCards(now);
   }
 
   function refresh() {

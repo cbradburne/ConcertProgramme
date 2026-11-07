@@ -1,0 +1,29 @@
+<!doctype html>
+<html lang="en-GB">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>{{title}}</title>
+<meta name="description" content="{{description}}">
+<meta name="robots" content="noindex">
+<meta name="color-scheme" content="light dark">
+<meta name="theme-color" content="#121516">
+<meta name="generated" content="{{generated_iso}}" data-generated>
+<link rel="icon" type="image/png" sizes="32x32" href="{{root}}assets/icon-32.png">
+<link rel="icon" type="image/png" sizes="192x192" href="{{root}}assets/icon-192.png">
+<link rel="apple-touch-icon" href="{{root}}assets/icon-180.png">
+<link rel="preload" href="{{root}}assets/fonts/playfair-display-latin-600-normal.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="stylesheet" href="{{root}}assets/site.css?v={{asset_version}}">
+<script>try{var d=document.documentElement,t=localStorage.getItem("theme"),s=localStorage.getItem("size");if(t)d.setAttribute("data-theme",t);if(s)d.setAttribute("data-size",s)}catch(e){}</script>
+</head>
+<body class="{{body_class}}">
+<a class="skip-link" href="#main">Skip to content</a>
+{{header}}
+<main id="main">
+{{main}}
+</main>
+{{after_main}}
+{{footer}}
+<script src="{{root}}assets/app.js?v={{asset_version}}" defer></script>
+</body>
+</html>

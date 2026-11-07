@@ -3,8 +3,8 @@ name: Update programme notes
 on:
   schedule:
     # Every 30 minutes, 07:00-22:59 UTC (7am-11pm in winter, 8am-midnight in summer).
-    # The page itself switches between concerts at the right time, so these runs
-    # only need to pick up new concerts and edits to the notes.
+    # The home page itself switches between concerts at the right time, so these
+    # runs only need to pick up new concerts and edits to the programmes.
     - cron: "7,37 7-22 * * *"
   push:
     branches: [main]
@@ -49,18 +49,17 @@ jobs:
           key: images-${{ github.run_id }}
           restore-keys: images-
 
-      - name: Build the page from concerts.leeds.ac.uk
+      - name: Build the site from concerts.leeds.ac.uk, Open Up and YouTube
         run: python build.py --out _site --cache .image-cache --site-url "${{ steps.pages.outputs.base_url }}/"
 
-      - name: Compare with the published page
+      - name: Compare with the published site
         id: compare
         env:
-          LIVE_URL: ${{ steps.pages.outputs.base_url }}/
+          LIVE_URL: ${{ steps.pages.outputs.base_url }}/build-hash.txt
           EVENT: ${{ github.event_name }}
         run: |
           changed=true
-          if [ "$EVENT" = "schedule" ] && curl -fsSL "$LIVE_URL" -o live.html \
-             && diff -q <(grep -v 'data-generated' live.html) <(grep -v 'data-generated' _site/index.html) >/dev/null; then
+          if [ "$EVENT" = "schedule" ] && [ "$(curl -fsSL "$LIVE_URL" 2>/dev/null)" = "$(cat _site/build-hash.txt)" ]; then
             changed=false
             echo "Nothing has changed since the last update."
           fi

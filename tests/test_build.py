@@ -1,4 +1,4 @@
-"""Tests for build.py, using saved copies of concerts.leeds.ac.uk pages.
+"""Tests for build.py, using saved copies of the real pages.
 
 Run with:  python -m unittest discover -s tests
 """
@@ -27,11 +27,11 @@ def london(year, month, day, hour=0, minute=0):
 
 def notes_for(slug):
     root = build.parse_html(fixture(f"event-{slug}.html"))
-    return build.render_notes(root.find("div", cls="cms"))
+    return build.read_notes(root.find("div", cls="cms"))
 
 
 class FakeSite:
-    """Serves the saved pages instead of the live website."""
+    """Serves the saved pages instead of the live websites."""
 
     def __init__(self, listing=None, broken=()):
         self.listing = listing
@@ -40,16 +40,19 @@ class FakeSite:
 
     def __call__(self, url):
         self.requested.append(url)
-        if "date-type=" in url:
+        if any(part in url for part in self.broken):
+            raise build.BuildError(f"Could not download {url}")
+        if url == build.OPENUP_WHATS_ON:
+            name = "openup-whats-on.html"
+        elif url == build.YOUTUBE_FEED:
+            name = "youtube-feed.xml"
+        elif "date-type=" in url:
             if self.listing is not None:
                 return self.listing.encode()
             month = re.search(r"date-type=(\d{4})\.(\d{2})", url)
             name = f"listing-{month[1]}-{month[2]}.html" if month else "listing-current.html"
         elif url.startswith(build.SITE + "/events/"):
-            slug = url.rstrip("/").rsplit("/", 1)[-1]
-            if slug in self.broken:
-                raise build.BuildError(f"Could not download {url}")
-            name = f"event-{slug}.html"
+            name = "event-" + url.rstrip("/").rsplit("/", 1)[-1] + ".html"
         else:
             raise build.BuildError(f"Not available offline: {url}")
         path = FIXTURES / name
@@ -100,9 +103,7 @@ class ListingTests(unittest.TestCase):
         first = concerts[0]
         self.assertEqual(first.id, "5520")
         self.assertEqual(first.title, "Toby Shaer, Archie Moss and Jack Warnock")
-        self.assertEqual(
-            first.url, "https://concerts.leeds.ac.uk/events/toby-shaer-archie-moss-and-jack-warnock/"
-        )
+        self.assertEqual(first.slug, "toby-shaer-archie-moss-and-jack-warnock")
         self.assertEqual(first.start, london(2026, 11, 13, 13, 5))
         self.assertEqual(first.finish, london(2026, 11, 13, 13, 55))
         self.assertEqual(first.time_text, "1:05pm - 1:55pm")
@@ -117,6 +118,15 @@ class ListingTests(unittest.TestCase):
         self.assertEqual(len(urls), len(set(urls)))
         self.assertEqual(len(concerts), 10)
         self.assertEqual([c.start for c in concerts], sorted(c.start for c in concerts))
+
+    def test_event_details(self):
+        concert = build.parse_listing(fixture("listing-current.html"))[0]
+        build.add_event_details(FakeSite(), concert)
+        self.assertEqual(concert.venue, "Clothworkers Centenary Concert Hall")
+        self.assertEqual(concert.admission, "Pay what you can")
+        self.assertEqual(concert.doors, "12:15pm")
+        self.assertEqual(concert.ticket_url, "https://buytickets.at/leedsuniversity72/2255364")
+        self.assertTrue(concert.image_urls[0].endswith("Toby-Shaer-Archie-Moss-Jack-Warnock-event-header.png"))
 
 
 class ScheduleTests(unittest.TestCase):
@@ -150,64 +160,95 @@ class ScheduleTests(unittest.TestCase):
 
 
 class NotesTests(unittest.TestCase):
-    def test_repertoire_and_performers(self):
+    def test_artists_repertoire_and_notes_are_separated(self):
         notes = notes_for("ensemble-augelletti")
-        self.assertIn('<ul class="performers">', notes)
-        self.assertEqual(notes.count('<span class="name">'), 5)
-        self.assertIn('<span class="role">viola da gamba</span>', notes)
-        self.assertIn("<h3>Jewels that brightly burn</h3>", notes)
-        self.assertEqual(notes.count('<span class="composer">'), 7)
+        self.assertEqual(
+            notes.artists,
+            [
+                ("Olwen Foulkes", "recorders"),
+                ("Ellen Bundy", "violin"),
+                ("Kate Conway", "viola da gamba"),
+                ("Toby Carr", "theorbo"),
+                ("Benedict Williams", "harpsichord"),
+            ],
+        )
+        self.assertIn("<h3>Jewels that brightly burn</h3>", notes.repertoire_html)
+        self.assertEqual(notes.repertoire_html.count('<span class="composer">'), 7)
         self.assertIn(
             '<span class="composer">Johann Sebastian Bach</span> '
             '<span class="detail">(1685-1750) arr. Ensemble Augelletti</span>'
             '<span class="work">Sonata in G minor, BWV1029</span>',
-            notes,
+            notes.repertoire_html,
         )
+        self.assertNotIn("composer", notes.about_html)
+        self.assertIn("Ensemble Augelletti specialise", notes.about_html)
+
+    def test_artists_named_in_biographies(self):
+        self.assertEqual(
+            notes_for("toby-shaer-archie-moss-and-jack-warnock").artists,
+            [
+                ("Archie Moss", "accordion"),
+                ("Toby Shaer", "fiddle, flute, whistles, cittern"),
+                ("Jack Warnock", "guitar, vocals"),
+            ],
+        )
+        self.assertEqual(
+            notes_for("flamenco").artists,
+            [("Monica Garcia", "singer"), ("Adrián Solá", "guitarist"), ("Marcos Morales", "dancer")],
+        )
+        self.assertEqual(notes_for("yue-qi").artists, [("Yue Qi", "violist")])
+
+    def test_no_repertoire_means_everything_is_about_the_concert(self):
+        notes = notes_for("toby-shaer-archie-moss-and-jack-warnock")
+        self.assertEqual(notes.repertoire_html, "")
+        self.assertIn("are a dynamic trio", notes.about_html)
 
     def test_works_in_separate_paragraphs_form_one_list(self):
         notes = notes_for("matteo-cimatti-nicola-eimer")
-        self.assertEqual(notes.count('<ul class="repertoire">'), 1)
-        self.assertEqual(notes.count('<span class="composer">'), 2)
+        self.assertEqual(notes.repertoire_html.count('<ul class="repertoire">'), 1)
+        self.assertEqual(notes.repertoire_html.count('<span class="composer">'), 2)
 
     def test_mixed_paragraphs_are_split(self):
         notes = notes_for("student-showcase-62")
         self.assertIn(
             "<p>Performed by <strong>Lydia-Faith Smith</strong> (vocals) and "
             "<strong>Daniel Gordon</strong> (piano):</p>",
-            notes,
+            notes.repertoire_html,
         )
-        self.assertIn('<span class="composer">Murray Grand</span>', notes)
-        self.assertEqual(notes.count('<ul class="repertoire">'), 5)
+        self.assertEqual(notes.repertoire_html.count('<ul class="repertoire">'), 5)
+        self.assertIn(("Daniel Gordon", "piano"), notes.artists)
+        self.assertEqual(len(notes.artists), 6)  # Daniel Gordon only once
 
-    def test_quotes_and_biographies_stay_as_text(self):
+    def test_quotes_stay_as_text(self):
         notes = notes_for("toby-shaer-archie-moss-and-jack-warnock")
-        self.assertNotIn('class="composer"', notes)
-        self.assertIn("<p><strong>Toby Shaer</strong> (fiddle, flute, whistles, cittern) is a", notes)
-        self.assertIn("Robert McMillen, The Irish News</p>", notes)
+        self.assertIn("Robert McMillen, The Irish News</p>", notes.about_html)
 
     def test_outlook_safe_links_are_unwrapped(self):
-        notes = notes_for("toby-shaer-archie-moss-and-jack-warnock")
-        self.assertNotIn("safelinks", notes)
-        self.assertIn('href="https://leedscityoflanguages.leeds.ac.uk/"', notes)
+        html = build.render_notes(
+            build.parse_html(fixture("event-toby-shaer-archie-moss-and-jack-warnock.html")).find("div", cls="cms")
+        )
+        self.assertNotIn("safelinks", html)
+        self.assertIn('href="https://leedscityoflanguages.leeds.ac.uk/"', html)
 
     def test_bold_does_not_leak_out_of_broken_markup(self):
         notes = notes_for("la-polemica")
-        self.assertIn("<p>Clothworkers Centenary Concert Hall</p>", notes)
-        self.assertEqual(notes.count('<span class="name">'), 6)
+        self.assertIn("<p>Clothworkers Centenary Concert Hall</p>", notes.about_html)
+        self.assertEqual(len(notes.artists), 6)
 
     def test_video_thumbnail_becomes_a_link(self):
         notes = notes_for("dongyang-gozupa")
-        self.assertIn('<a href="https://youtu.be/KgqGy-nhEuU" target="_blank" rel="noopener">Watch the video</a>', notes)
+        self.assertIn(
+            '<a href="https://youtu.be/KgqGy-nhEuU" target="_blank" rel="noopener">Watch the video</a>',
+            notes.about_html,
+        )
 
     def test_site_styling_is_removed(self):
         for slug in ("toby-shaer-archie-moss-and-jack-warnock", "diva-opera-la-cenerentola", "rolf-hind"):
             notes = notes_for(slug)
+            html = notes.repertoire_html + notes.about_html
             with self.subTest(slug=slug):
-                self.assertNotIn("style=", notes)
-                self.assertNotIn("<h5", notes)
-                self.assertNotIn("<span style", notes)
-                self.assertNotIn("<img", notes)
-                self.assertNotIn("&nbsp;", notes)
+                for unwanted in ("style=", "<h5", "<img", "&nbsp;"):
+                    self.assertNotIn(unwanted, html)
 
     def test_unsafe_markup_is_dropped(self):
         root = build.parse_html(
@@ -215,66 +256,165 @@ class NotesTests(unittest.TestCase):
             '<a href="javascript:alert(1)">there</a><iframe src="https://e.com"></iframe>'
             "<style>p{}</style></p></div>"
         )
-        notes = build.render_notes(root.find("div", cls="cms"))
-        self.assertEqual(notes, "<p>Hello there</p>")
+        self.assertEqual(build.render_notes(root.find("div", cls="cms")), "<p>Hello there</p>")
+
+
+class ImageTests(unittest.TestCase):
+    def test_full_size_originals(self):
+        cases = {
+            "https://openup.leeds.ac.uk/wp-content/uploads/2026/06/g1qlojhgmtkpvbkx8h55-600x400.webp":
+                "https://openup.leeds.ac.uk/wp-content/uploads/2026/06/g1qlojhgmtkpvbkx8h55.webp",
+            "https://openup.leeds.ac.uk/wp-content/webp-express/webp-images/doc-root/wp-content/uploads/2026/09/Untitled-Design-17-600x400.png.webp":
+                "https://openup.leeds.ac.uk/wp-content/uploads/2026/09/Untitled-Design-17.png",
+            "https://concerts.leeds.ac.uk/wp-content/uploads/sites/101/2026/06/Header-700x350.png":
+                "https://concerts.leeds.ac.uk/wp-content/uploads/sites/101/2026/06/Header.png",
+            "https://concerts.leeds.ac.uk/wp-content/uploads/sites/101/2026/06/Header.png":
+                "https://concerts.leeds.ac.uk/wp-content/uploads/sites/101/2026/06/Header.png",
+        }
+        for url, expected in cases.items():
+            with self.subTest(url=url):
+                self.assertEqual(build.without_size_suffix(url), expected)
+
+
+class OpenUpAndYouTubeTests(unittest.TestCase):
+    def setUp(self):
+        self.concerts = build.parse_listing(fixture("listing-current.html"))
+        self.events = build.parse_openup_listing(fixture("openup-whats-on.html"))
+        self.videos = build.parse_youtube_feed(fixture("youtube-feed.xml"))
+
+    def concert(self, title):
+        return next(c for c in self.concerts if c.title.startswith(title))
+
+    def test_matches_open_up_pages_even_with_different_names(self):
+        flamenco = build.match_openup(self.concert("Flamenco"), self.events)
+        self.assertEqual(flamenco.url, "https://openup.leeds.ac.uk/events/flamenco-monica-garcia-adrian-sola-marcos-morales/")
+        dongyang = build.match_openup(self.concert("Dongyang"), self.events)
+        self.assertEqual(dongyang.title, "Leeds Korean Day Festival: Dongyang Gozupa")
+        self.assertIsNone(build.match_openup(self.concert("Samuel Moore"), self.events))
+        matched = [c.title for c in self.concerts if build.match_openup(c, self.events)]
+        self.assertEqual(len(matched), 6)
+
+    def test_finds_the_scheduled_livestream(self):
+        video = build.match_stream(self.concert("Toby Shaer"), self.videos)
+        self.assertEqual(video.id, "6mF3M7acbGE")
+
+    def test_does_not_reuse_an_old_stream_with_the_same_name(self):
+        # October's "Student Showcase" stream is not December's.
+        self.assertIsNone(build.match_stream(self.concert("Student Showcase"), self.videos))
 
 
 class BuildTests(unittest.TestCase):
     def run_build(self, now, **kwargs):
         site = kwargs.pop("site", FakeSite())
         out = Path(self.enterContext(tempfile.TemporaryDirectory()))
-        build.build(out, fetch=site, now=now, images=False, **kwargs)
-        return out, (out / "index.html").read_text(encoding="utf-8")
+        concerts = build.build(out, fetch=site, now=now, images=False, **kwargs)
+        return out, (out / "index.html").read_text(encoding="utf-8"), concerts
 
     @staticmethod
     def visible_concerts(page):
         return re.findall(r'data-concert="(\d+)"[^>]*?data-until="[^"]+">', page)
 
-    def test_page_shows_todays_concert(self):
-        out, page = self.run_build(london(2026, 11, 13, 12))
-        self.assertEqual(page.count('class="concert"'), build.EMBEDDED_CONCERTS)
+    def test_site_pages(self):
+        out, _, concerts = self.run_build(london(2026, 11, 7, 12), site_url="https://example.org/notes/")
+        self.assertTrue((out / "events" / "index.html").exists())
+        for concert in concerts:
+            self.assertTrue((out / "programmes" / concert.slug / "index.html").exists(), concert.slug)
+        for name in ("404.html", "build-hash.txt", "assets/site.css", "assets/app.js", "assets/uol-logo.svg"):
+            self.assertTrue((out / name).exists(), name)
+        for page in out.rglob("*.html"):
+            self.assertNotIn("{{", page.read_text(encoding="utf-8"), page)
+
+    def test_home_shows_todays_concert(self):
+        _, page, _ = self.run_build(london(2026, 11, 13, 12))
+        self.assertEqual(page.count('class="programme"'), build.EMBEDDED_CONCERTS)
         self.assertEqual(self.visible_concerts(page), ["5520"])
-        self.assertIn('<p class="status" data-status>Today</p>', page)
+        self.assertIn('data-default="Next concert">Today</p>', page)
         self.assertIn('id="empty" hidden', page)
-        self.assertNotIn("{{", page)
+        self.assertIn("International<br>Concert Series", page)
+        self.assertIn('aria-label="University of Leeds"', page)
 
-    def test_page_moves_on_after_the_concert(self):
-        _, page = self.run_build(london(2026, 11, 13, 15))
+    def test_home_moves_on_after_the_concert(self):
+        _, page, _ = self.run_build(london(2026, 11, 13, 15))
         self.assertEqual(self.visible_concerts(page), ["5573"])
-        self.assertIn("Dongyang Gozupa", page)
 
-    def test_coming_up_lists_later_concerts(self):
-        _, page = self.run_build(london(2026, 11, 13, 12))
-        items = re.findall(r'<li data-upcoming="(\d+)"[^>]*?(hidden)?>', page)
-        self.assertEqual(items[0][0], "5573")
-        self.assertNotIn("5520", [item for item, _ in items])
+    def test_programme_layout_and_links(self):
+        out, _, _ = self.run_build(london(2026, 11, 7, 12))
+        page = (out / "programmes" / "toby-shaer-archie-moss-and-jack-warnock" / "index.html").read_text()
+        for heading in ('>Artists</h2>', '>About the concert</h2>'):
+            self.assertIn(heading, page)
+        self.assertIn('href="https://openup.leeds.ac.uk/events/toby-shaer-archie-moss-and-jack-warnock/"', page)
+        self.assertIn('href="https://www.youtube.com/watch?v=6mF3M7acbGE"', page)
+        self.assertIn(build.YOUTUBE_LIVE, page)
+        # "Next event" advertises the following concert with a ticket button.
+        band = page[page.index('class="next-band"'):]
+        self.assertIn("Dongyang Gozupa", band)
+        self.assertIn('href="https://openup.leeds.ac.uk/events/dongyang-gozupa/"', band)
+
+        pixels = (out / "programmes" / "pixels-ensemble-6" / "index.html").read_text()
+        for heading in ('>Artists</h2>', '>Repertoire</h2>', '>Notes &amp; biographies</h2>'):
+            self.assertIn(heading, pixels)
+        # Not on Open Up yet: falls back to the concert site's box office link.
+        self.assertIn("buytickets.at/leedsuniversity72", pixels)
+
+    def test_whats_on_lists_every_concert(self):
+        out, _, concerts = self.run_build(london(2026, 11, 7, 12))
+        page = (out / "events" / "index.html").read_text()
+        self.assertEqual(page.count('<li class="card'), len(concerts))
+        self.assertEqual(page.count("is-next"), 1)
+        for concert in concerts:
+            self.assertIn(f'href="../programmes/{concert.slug}/"', page)
+
+    def test_coming_up_skips_the_advertised_next_event(self):
+        _, page, _ = self.run_build(london(2026, 11, 13, 12))
+        items = re.findall(r'<li data-upcoming="(\d+)"[^>]*?( hidden)?>', page)
+        self.assertEqual(items[0], ("5573", " hidden"))
         self.assertEqual(sum(1 for _, hidden in items if not hidden), build.UPCOMING_SHOWN)
+
+    def test_open_up_or_youtube_down_still_builds(self):
+        site = FakeSite(broken={"openup.leeds.ac.uk", "youtube.com"})
+        out, _, concerts = self.run_build(london(2026, 11, 7, 12), site=site)
+        self.assertFalse(any(c.openup_url or c.stream_url for c in concerts))
+        page = (out / "programmes" / "connaught-brass" / "index.html").read_text()
+        self.assertIn("buytickets.at/leedsuniversity72", page)
 
     def test_empty_listing_shows_placeholder(self):
         listing = (
             '<main><input type="hidden" name="post_type" value="tk_events">'
             '<p class="search-results__count">No results</p></main>'
         )
-        _, page = self.run_build(london(2026, 11, 7), site=FakeSite(listing=listing))
+        out, page, _ = self.run_build(london(2026, 11, 7), site=FakeSite(listing=listing))
         self.assertIn('id="empty">', page)
-        self.assertNotIn('class="concert"', page)
+        self.assertNotIn('class="programme"', page)
+        self.assertIn('id="no-events">', (out / "events" / "index.html").read_text())
 
     def test_failed_download_stops_the_build(self):
-        site = FakeSite(broken={"dongyang-gozupa"})
         with self.assertRaises(build.BuildError):
-            self.run_build(london(2026, 11, 7), site=site)
+            self.run_build(london(2026, 11, 7), site=FakeSite(broken={"events/yue-qi/"}))
+
+    def test_refuses_to_empty_an_unrelated_folder(self):
+        out = Path(self.enterContext(tempfile.TemporaryDirectory()))
+        (out / "precious.txt").write_text("keep me")
+        with self.assertRaises(build.BuildError):
+            build.build(out, fetch=FakeSite(), now=london(2026, 11, 7), images=False)
+        self.assertTrue((out / "precious.txt").exists())
+
+    def test_fingerprint_ignores_the_update_time(self):
+        first, _, _ = self.run_build(london(2026, 11, 7, 12, 0))
+        second, _, _ = self.run_build(london(2026, 11, 7, 12, 30))
+        self.assertEqual((first / "build-hash.txt").read_text(), (second / "build-hash.txt").read_text())
 
     def test_poster_and_qr_code(self):
         try:
             import segno  # noqa: F401
         except ImportError:
             self.skipTest("segno not installed")
-        out, _ = self.run_build(london(2026, 11, 7), site_url="https://example.org/notes/")
+        out, _, _ = self.run_build(london(2026, 11, 7), site_url="https://example.org/notes/")
         self.assertTrue((out / "qr.svg").exists())
         self.assertTrue((out / "qr.png").exists())
         poster = (out / "poster.html").read_text(encoding="utf-8")
         self.assertIn("example.org/notes", poster)
         self.assertIn("<svg", poster)
+        self.assertIn("International<br>Concert Series", poster)
 
 
 if __name__ == "__main__":

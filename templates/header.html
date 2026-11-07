@@ -1,0 +1,25 @@
+<header class="site-header">
+  <div class="wide bar">
+    <a class="brand" href="{{home}}">
+      {{uol_logo}}
+      <span class="brand-divider" aria-hidden="true"></span>
+      <span class="brand-name">International<br>Concert Series</span>
+    </a>
+    <div class="tools">
+      <button class="tool" type="button" id="size-toggle" aria-label="Text size: standard. Tap to enlarge.">
+        <span aria-hidden="true" class="size-glyph"><small>A</small>A</span>
+      </button>
+      <button class="tool" type="button" id="theme-toggle" aria-label="Switch to dark mode">
+        <svg aria-hidden="true" class="icon icon-moon" viewBox="0 0 24 24" width="20" height="20"><path d="M20.5 14.6A8.5 8.5 0 0 1 9.4 3.5a8.5 8.5 0 1 0 11.1 11.1Z" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/></svg>
+        <svg aria-hidden="true" class="icon icon-sun" viewBox="0 0 24 24" width="20" height="20"><circle cx="12" cy="12" r="4.2" fill="none" stroke="currentColor" stroke-width="1.8"/><path d="M12 2.5v2.2M12 19.3v2.2M2.5 12h2.2M19.3 12h2.2M5.3 5.3l1.5 1.5M17.2 17.2l1.5 1.5M5.3 18.7l1.5-1.5M17.2 6.8l1.5-1.5" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>
+      </button>
+    </div>
+  </div>
+  <nav class="site-nav" aria-label="Main">
+    <div class="wide nav-inner">
+      <a href="{{home}}"{{nav_programme}}>Programme</a>
+      <a href="{{root}}events/"{{nav_events}}>What's on</a>
+      <a class="nav-live" href="{{youtube_live}}" target="_blank" rel="noopener"><span class="live-dot" aria-hidden="true"></span>Watch live<span class="sr-only"> on YouTube</span></a>
+    </div>
+  </nav>
+</header>
