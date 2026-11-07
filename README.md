@@ -4,13 +4,14 @@ A paper-free programme website for the
 [University of Leeds International Concert Series](https://concerts.leeds.ac.uk/events/).
 Audiences use **one link (or one QR code) every time**:
 
-> **https://cbradburne.github.io/ConcertProgramme/**: today's programme
+> **https://uolconcerts.com/**: today's programme
 >
-> https://cbradburne.github.io/ConcertProgramme/events/: What's on, with every upcoming concert
+> https://uolconcerts.com/events/: What's on, with every upcoming concert
 >
-> https://cbradburne.github.io/ConcertProgramme/poster.html: printable QR poster
+> https://uolconcerts.com/poster.html: printable QR poster
 
-These addresses work once the one-time setup below is done.
+Until the domain is connected (see [Custom domain](#custom-domain-uolconcertscom)), the site is at
+https://cbradburne.github.io/ConcertProgramme/. Once it is connected, that address redirects to uolconcerts.com.
 
 ## What's on the site
 
@@ -69,13 +70,39 @@ The site uses the University's typefaces: **Freight Display** for titles, **Frei
 
 Do these in this order:
 
-1. **Make the repository public** (done). GitHub Pages is free for public repositories.
-2. **Make `main` the default branch:** *Settings → General → Default branch* → switch to **main**. Scheduled updates only run on the default branch, and Pages only accepts updates from it.
-3. **Turn on GitHub Pages:** *Settings → Pages → Build and deployment → Source:* **GitHub Actions**. There's no need to pick a branch or folder.
-4. **Run it once:** *Actions → Update programme notes → Run workflow* (branch: **main**). After about a minute the site is live.
-5. **Print the poster** from `/poster.html`, or use `/qr.png` / `/qr.svg` on seat cards, screens or slides. The QR code never changes, so laminated copies can be reused.
+All done (7 Nov 2026), listed here for reference:
 
-*Optional:* to use a university address instead (e.g. `programme.concerts.leeds.ac.uk`), ask IT for a DNS `CNAME` record pointing to `cbradburne.github.io`, then add it under *Settings → Pages → Custom domain*. Do this **before** printing QR codes.
+1. **Make the repository public.** GitHub Pages is free for public repositories.
+2. **Make `main` the default branch:** *Settings → General → Default branch* → **main**. Scheduled updates only run on the default branch, and Pages only accepts updates from it.
+3. **Turn on GitHub Pages:** *Settings → Pages → Build and deployment → Source:* **GitHub Actions**.
+4. **Run it once:** *Actions → Update programme notes → Run workflow* (branch: **main**).
+
+## Custom domain (uolconcerts.com)
+
+Do these in this order. Adding the domain on GitHub before changing DNS stops anyone else from claiming it.
+
+1. **Verify the domain with GitHub** (protects it from being taken over). Open your GitHub profile *Settings → Pages* (your account settings, not the repository's), then *Add a domain* → `uolconcerts.com`. GitHub shows a **TXT record** to add. Keep that page open.
+2. **Connect it to this site:** in the repository, go to *Settings → Pages → Custom domain*, enter `uolconcerts.com` and click **Save**.
+3. **Add these DNS records** where you bought the domain (its DNS or "manage DNS" page). First delete any existing records for `@` and `www`, such as a parking page.
+
+   | Type | Name / host | Value |
+   | --- | --- | --- |
+   | A | `@` | `185.199.108.153` |
+   | A | `@` | `185.199.109.153` |
+   | A | `@` | `185.199.110.153` |
+   | A | `@` | `185.199.111.153` |
+   | AAAA | `@` | `2606:50c0:8000::153` |
+   | AAAA | `@` | `2606:50c0:8001::153` |
+   | AAAA | `@` | `2606:50c0:8002::153` |
+   | AAAA | `@` | `2606:50c0:8003::153` |
+   | CNAME | `www` | `cbradburne.github.io` |
+   | TXT | the name GitHub gave in step 1 (`_github-pages-challenge-cbradburne`) | the code GitHub gave in step 1 |
+
+4. **Finish on GitHub:** in profile *Settings → Pages*, click **Verify**. In the repository's *Settings → Pages*, wait for "DNS check successful", then tick **Enforce HTTPS**. DNS changes can take from a few minutes to a few hours, and the certificate up to an hour after that.
+5. **Rebuild:** *Actions → Update programme notes → Run workflow*. The QR code and poster then use `https://uolconcerts.com/` automatically.
+6. **Print the poster** from `/poster.html`, or use `/qr.png` / `/qr.svg`. The QR code won't change after this, so laminated copies can be reused.
+
+Keep the domain on **auto-renew**, ideally on a University account or card. If it lapses, someone else could buy it, and every printed QR code would point to their site.
 
 ## Tips for whoever writes the event pages
 
@@ -118,7 +145,7 @@ Colours and fonts are at the top of `templates/site.css`. To change how often it
 
 ```sh
 pip install -r requirements.txt        # optional: photo shrinking, QR code, time zone data
-python build.py --out _site --site-url https://cbradburne.github.io/ConcertProgramme/
+python build.py --out _site --site-url https://uolconcerts.com/
 python -m http.server --directory _site 8000   # then open http://localhost:8000
 python -m unittest discover -s tests   # tests use saved copies of the real pages
 ```

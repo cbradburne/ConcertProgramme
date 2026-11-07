@@ -1637,8 +1637,12 @@ def main(argv: list[str] | None = None) -> int:
     logging.basicConfig(level=logging.INFO, format="%(message)s")
 
     site_url = args.site_url or default_site_url()
-    if site_url and not site_url.endswith("/"):
-        site_url += "/"
+    if site_url:
+        # GitHub reports a new custom domain as http:// until its certificate is
+        # ready; the QR code should always use the secure address.
+        site_url = re.sub(r"^http://", "https://", site_url)
+        if not site_url.endswith("/"):
+            site_url += "/"
     try:
         build(args.out, site_url=site_url, cache_dir=args.cache, images=not args.no_images)
     except BuildError as exc:
