@@ -391,6 +391,23 @@ class BuildTests(unittest.TestCase):
         for concert in concerts:
             self.assertIn(f'href="../programmes/{concert.slug}/"', page)
 
+    def test_find_us_page_and_footer_button(self):
+        out, page, _ = self.run_build(london(2026, 11, 7, 12))
+        find_us = (out / "find-us" / "index.html").read_text()
+        self.assertIn("12 Cavendish Road, Leeds LS2 9JT", find_us)
+        self.assertIn("openstreetmap.org/export/embed.html", find_us)
+        for heading in ("When you arrive", "Parking", "Accessibility", "Contact us", "From church to concert hall"):
+            self.assertIn(heading, find_us)
+        self.assertNotIn("{{", find_us)
+        # Every page's footer links to it, relative to that page.
+        self.assertIn('href="find-us/"', page)
+        self.assertIn('href="../find-us/"', (out / "events" / "index.html").read_text())
+        self.assertIn('href="../../find-us/"', (out / "programmes" / "connaught-brass" / "index.html").read_text())
+
+    def test_whats_on_has_no_intro_sentence(self):
+        out, _, _ = self.run_build(london(2026, 11, 7, 12))
+        self.assertNotIn("Choose a concert to read its programme", (out / "events" / "index.html").read_text())
+
     def test_coming_up_skips_the_advertised_next_event(self):
         _, page, _ = self.run_build(london(2026, 11, 13, 12))
         items = re.findall(r'<li data-upcoming="(\d+)"[^>]*?( hidden)?>', page)

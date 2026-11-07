@@ -1182,6 +1182,12 @@ def external(url: str) -> str:
     return f'href="{esc(url)}" target="_blank" rel="noopener"'
 
 
+PIN_ICON = (
+    '<svg class="icon" aria-hidden="true" viewBox="0 0 24 24" width="18" height="18">'
+    '<path d="M12 21s-6.5-5.6-6.5-11a6.5 6.5 0 0 1 13 0c0 5.4-6.5 11-6.5 11Z" fill="none" '
+    'stroke="currentColor" stroke-width="1.7" stroke-linejoin="round"/>'
+    '<circle cx="12" cy="10" r="2.4" fill="none" stroke="currentColor" stroke-width="1.7"/></svg>'
+)
 PLAY_ICON = (
     '<svg class="icon" aria-hidden="true" viewBox="0 0 24 24" width="18" height="18">'
     '<path d="M8 5.5v13l11-6.5z" fill="currentColor"/></svg>'
@@ -1420,6 +1426,7 @@ def render_page(
         "box_office": BOX_OFFICE,
         "concert_site": SITE + "/",
         "uol_logo": UOL_LOGO,
+        "pin_icon": PIN_ICON,
         "generated": generated,
     }
     return fill(
@@ -1551,7 +1558,6 @@ def build_events(concerts: list[Concert], now: dt.datetime) -> str:
 <section class="wide page-intro">
   <p class="kicker">{SERIES_NAME}</p>
   <h1 class="page-title">What’s on</h1>
-  <p class="lead">Concerts at the Clothworkers Centenary Concert Hall. Choose a concert to read its programme or book tickets.</p>
 </section>
 <section class="wide"{"" if concerts else " hidden"}>
   <ol class="cards" id="event-list">
@@ -1578,6 +1584,19 @@ def build_programme_page(concert: Concert, following: Concert | None, now: dt.da
         main=render_programme(concert, following, "../../", now, eager=True),
         now=now,
         body_class="page-programme",
+    )
+
+
+def build_find_us(now: dt.datetime) -> str:
+    """Directions, parking, access, contact details and the hall's history."""
+    return render_page(
+        root="../",
+        title=f"Find us · {SERIES_FULL_NAME}",
+        description="How to find the Clothworkers Centenary Concert Hall, School of Music, 12 Cavendish Road, Leeds LS2 9JT.",
+        main=fill(template("find-us.html"), {"pin_icon": PIN_ICON}),
+        now=now,
+        active="find-us",
+        body_class="page-find-us",
     )
 
 
@@ -1682,6 +1701,8 @@ def build(
     (out_dir / "index.html").write_text(build_home(concerts, now), encoding="utf-8")
     (out_dir / "events").mkdir()
     (out_dir / "events" / "index.html").write_text(build_events(concerts, now), encoding="utf-8")
+    (out_dir / "find-us").mkdir()
+    (out_dir / "find-us" / "index.html").write_text(build_find_us(now), encoding="utf-8")
     for index, concert in enumerate(concerts):
         following = concerts[index + 1] if index + 1 < len(concerts) else None
         page_dir = out_dir / "programmes" / concert.slug
