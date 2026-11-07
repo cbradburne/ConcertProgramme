@@ -1532,7 +1532,9 @@ def write_qr_and_poster(site_url: str, out_dir: Path) -> None:
     qr.save(out_dir / "qr.svg", scale=10, border=2, dark="#000000", light="#ffffff")
     qr.save(out_dir / "qr.png", scale=16, border=2)
     buffer = io.BytesIO()
-    qr.save(buffer, kind="svg", scale=10, border=2, xmldecl=False, svgclass="qr-code", lineclass=None)
+    # omitsize: no fixed width/height, just a viewBox, so the code scales to fill its box.
+    qr.save(buffer, kind="svg", scale=1, border=2, xmldecl=False, svgclass="qr-code",
+            lineclass=None, omitsize=True)
     poster = fill(
         template("poster.html"),
         {

@@ -455,6 +455,10 @@ class BuildTests(unittest.TestCase):
         poster = (out / "poster.html").read_text(encoding="utf-8")
         self.assertIn("example.org/notes", poster)
         self.assertIn("<svg", poster)
+        # The poster's QR code scales to fill its box (viewBox, no fixed size).
+        qr_tag = re.search(r'<svg[^>]*class="qr-code"[^>]*>', poster).group(0)
+        self.assertIn("viewBox", qr_tag)
+        self.assertNotIn("width=", qr_tag)
         self.assertIn("International<br>Concert Series", poster)
 
 
