@@ -27,6 +27,7 @@ import datetime as dt
 import hashlib
 import html
 import io
+import json
 import logging
 import os
 import re
@@ -373,7 +374,7 @@ class NotesReader:
                     if label:
                         self.flush()
                         self.runs.append(Run(label, PLAIN._replace(href=href)))
-                        self.flush()
+                        self.flush("media")
                     continue
                 self.walk(child, fmt._replace(href=href), ordered)
             else:  # span, font, u, small, ...: keep the text, drop the styling
@@ -388,7 +389,7 @@ class NotesReader:
             else:
                 lines[-1].append(run)
         lines = [tidy_line(line) for line in lines]
-        if kind in ("h", "ul", "ol"):
+        if kind in ("h", "ul", "ol", "media"):
             lines = [line for line in lines if has_text(line)]
             if lines:
                 self.blocks.append(Block(kind, lines))
@@ -500,8 +501,19 @@ WORK_RE = re.compile(
 PERFORMER_RE = re.compile(r"\s*(?P<name>[^()]{2,60}?)\s*\((?P<role>[^()]{1,60})\)\s*")
 
 
-def as_work(line: list[Run]) -> str | None:
-    """'<b>Composer</b> (dates) - Work' as a programme entry, else None."""
+@dataclass
+class Work:
+    composer: str
+    detail: str  # dates and/or "arr. ...", may be empty
+    title_runs: list[Run]
+
+    @property
+    def title(self) -> str:
+        return line_text(self.title_runs)
+
+
+def work_parts(line: list[Run]) -> Work | None:
+    """'<b>Composer</b> (dates) - Work' split into its parts, else None."""
     if not line or not line[0].fmt.bold or line[0].fmt.href:
         return None
     composer = COMPOSER_RE.fullmatch(line[0].text)
@@ -517,11 +529,21 @@ def as_work(line: list[Run]) -> str | None:
     details = " ".join(
         part for part in (composer["dates"], " ".join(match["detail"].split())) if part
     )
-    detail_html = f' <span class="detail">{html.escape(details)}</span>' if details else ""
+    return Work(composer=composer["name"], detail=details, title_runs=work)
+
+
+def render_work(work: Work) -> str:
+    detail_html = f' <span class="detail">{html.escape(work.detail)}</span>' if work.detail else ""
     return (
-        f'<li><span class="composer">{html.escape(composer["name"])}</span>'
-        f'{detail_html}<span class="work">{render_runs(work)}</span></li>'
+        f'<li><span class="composer">{html.escape(work.composer)}</span>'
+        f'{detail_html}<span class="work">{render_runs(work.title_runs)}</span></li>'
     )
+
+
+def as_work(line: list[Run]) -> str | None:
+    """'<b>Composer</b> (dates) - Work' as a programme entry, else None."""
+    work = work_parts(line)
+    return render_work(work) if work else None
 
 
 def performer_pairs(line: list[Run]) -> list[tuple[str, str]] | None:
@@ -589,15 +611,24 @@ class Notes:
     artists: list[tuple[str, str]] = field(default_factory=list)
     repertoire_html: str = ""  # the works, with any introduction before them
     about_html: str = ""  # everything after the works: notes and biographies
+    works: list[Work] = field(default_factory=list)
+    about_text: list[str] = field(default_factory=list)  # about_html as plain-text entries
 
 
-def group_items(items: list[tuple[str, str]]) -> str:
-    """Join (kind, html) items, wrapping runs of works / list items in lists."""
+class Item(NamedTuple):
+    kind: str  # "p", "h", "work", "ul", "ol" or "hr"
+    html: str
+    text: str | None = None  # plain text for the feed; None = leave out
+    work: Work | None = None
+
+
+def group_items(items: list[Item]) -> str:
+    """Join items' HTML, wrapping runs of works / list items in lists."""
     out: list[str] = []
     wrappers = {"work": '<ul class="repertoire">', "ul": "<ul>", "ol": "<ol>"}
     closers = {"work": "</ul>", "ul": "</ul>", "ol": "</ol>"}
     open_kind = None
-    for kind, markup in items:
+    for kind, markup, *_ in items:
         if kind != open_kind and open_kind:
             out.append(closers[open_kind])
             open_kind = None
@@ -614,50 +645,61 @@ def read_notes(container: Node | None) -> Notes:
     """Split an event's text into artists, repertoire and notes/biographies."""
     if container is None:
         return Notes()
-    items: list[tuple[str, str]] = []  # (kind, html) in reading order
+    items: list[Item] = []  # in reading order
     artists: list[tuple[str, str]] = []
     for block in NotesReader().read(container):
+        plain = "\n".join(map(line_text, block.lines))
         if block.kind == "hr":
-            items.append(("hr", "<hr>"))
+            items.append(Item("hr", "<hr>"))
+        elif block.kind == "media":  # a picture link, e.g. "Watch the video"
+            items.append(Item("p", f"<p>{'<br>'.join(map(render_runs, block.lines))}</p>"))
         elif block.kind == "h":
             lines = [render_runs(unbold(line)) for line in block.lines]
-            items.append(("h", f"<h3>{'<br>'.join(lines)}</h3>"))
+            items.append(Item("h", f"<h3>{'<br>'.join(lines)}</h3>", " ".join(map(line_text, block.lines))))
         elif block.kind in ("ul", "ol"):
-            items.append((block.kind, f"<li>{'<br>'.join(map(render_runs, block.lines))}</li>"))
-        elif is_heading(block.lines) and not as_work(block.lines[0]):
-            items.append(("h", f"<h3>{render_runs(unbold(block.lines[0]))}</h3>"))
+            items.append(Item(block.kind, f"<li>{'<br>'.join(map(render_runs, block.lines))}</li>", plain))
+        elif is_heading(block.lines) and not work_parts(block.lines[0]):
+            items.append(Item("h", f"<h3>{render_runs(unbold(block.lines[0]))}</h3>", plain))
         else:
+            html_lines: list[str] = []
             text_lines: list[str] = []
+
+            def paragraph() -> Item:
+                return Item("p", f"<p>{'<br>'.join(html_lines)}</p>", "\n".join(text_lines))
+
             for line in block.lines:
-                work = as_work(line)
+                work = work_parts(line)
                 people = None if work else performer_pairs(line)
-                if (work or people) and text_lines:
-                    items.append(("p", f"<p>{'<br>'.join(text_lines)}</p>"))
-                    text_lines = []
+                if (work or people) and html_lines:
+                    items.append(paragraph())
+                    html_lines, text_lines = [], []
                 if work:
-                    items.append(("work", work))
+                    items.append(Item("work", render_work(work), work=work))
                 elif people:
                     artists.extend(people)
                 else:
                     artists.extend(mentioned_artists(line))
-                    text_lines.append(render_runs(line))
-            if text_lines:
-                items.append(("p", f"<p>{'<br>'.join(text_lines)}</p>"))
+                    html_lines.append(render_runs(line))
+                    text_lines.append(line_text(line))
+            if html_lines:
+                items.append(paragraph())
 
-    while items and items[-1][0] == "hr":
+    while items and items[-1].kind == "hr":
         items.pop()
     unique: dict[str, tuple[str, str]] = {}
     for name, role in artists:
         unique.setdefault(name.casefold(), (name, role))
 
-    last_work = max((i for i, (kind, _) in enumerate(items) if kind == "work"), default=-1)
+    last_work = max((i for i, item in enumerate(items) if item.kind == "work"), default=-1)
     after = items[last_work + 1 :]
-    while after and after[0][0] == "hr":
+    while after and after[0].kind == "hr":
         after.pop(0)
     return Notes(
         artists=list(unique.values()),
         repertoire_html=group_items(items[: last_work + 1]),
         about_html=group_items(after),
+        works=[item.work for item in items if item.work],
+        about_text=[item.text for item in after if item.text],
     )
 
 
@@ -1651,6 +1693,47 @@ def copy_assets(out_dir: Path) -> None:
     shutil.copyfile(TEMPLATES / "app.js", assets / "app.js")
 
 
+def feed_entry(concert: Concert, site_url: str) -> dict:
+    """One concert in concerts.json (read by the School of Music foyer screen)."""
+    picture = concert.picture
+    image = None
+    if picture and picture.files and picture.width:
+        largest = picture.files[-1][0]
+        if not largest.startswith(("http://", "https://")):  # not the no-Pillow fallback
+            image = {"src": site_url + largest, "width": picture.width, "height": picture.height}
+    return {
+        "id": concert.id,
+        "title": concert.title,
+        "start": concert.start.isoformat(timespec="seconds"),
+        "end": concert.finish.isoformat(timespec="seconds"),
+        "timed": concert.has_time,
+        "venue": concert.venue or DEFAULT_VENUE,
+        "doors": concert.doors or None,
+        "admission": concert.admission or None,
+        "url": f"{site_url}programmes/{concert.slug}/",
+        "tickets": concert.booking_url or None,
+        "image": image,
+        "artists": [{"name": name, "role": role} for name, role in concert.notes.artists],
+        "works": [
+            {"composer": work.composer, "detail": work.detail or None, "title": work.title}
+            for work in concert.notes.works
+        ],
+        "notes": concert.notes.about_text,
+    }
+
+
+def write_feed(concerts: list[Concert], site_url: str, now: dt.datetime, out_dir: Path) -> None:
+    """concerts.json: the upcoming concerts, soonest first, with absolute URLs."""
+    feed = {
+        "version": 1,
+        "generated": now.astimezone(dt.timezone.utc).isoformat(timespec="seconds"),
+        "concerts": [feed_entry(concert, site_url) for concert in concerts],
+    }
+    (out_dir / "concerts.json").write_text(
+        json.dumps(feed, ensure_ascii=False, indent=2) + "\n", encoding="utf-8"
+    )
+
+
 def write_fingerprint(out_dir: Path) -> None:
     """A hash of the site (ignoring 'updated at' lines) so unchanged sites aren't republished."""
     digest = hashlib.sha256()
@@ -1660,6 +1743,10 @@ def write_fingerprint(out_dir: Path) -> None:
         data = path.read_bytes()
         if path.suffix == ".html":
             data = b"\n".join(line for line in data.split(b"\n") if b"data-generated" not in line)
+        elif path.name == "concerts.json":
+            feed = json.loads(data)
+            feed.pop("generated", None)
+            data = json.dumps(feed, sort_keys=True).encode()
         digest.update(str(path.relative_to(out_dir)).encode() + b"\0" + data)
     (out_dir / "build-hash.txt").write_text(digest.hexdigest() + "\n", encoding="utf-8")
 
@@ -1713,6 +1800,7 @@ def build(
     if site_url:
         (out_dir / "404.html").write_text(build_not_found(site_url, now), encoding="utf-8")
         write_qr_and_poster(site_url, out_dir)
+        write_feed(concerts, site_url, now, out_dir)
     write_fingerprint(out_dir)
     return concerts
 

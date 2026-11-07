@@ -4,6 +4,7 @@ Run with:  python -m unittest discover -s tests
 """
 
 import datetime as dt
+import json
 import re
 import sys
 import tempfile
@@ -500,6 +501,135 @@ class BuildTests(unittest.TestCase):
         self.assertIn("viewBox", qr_tag)
         self.assertNotIn("width=", qr_tag)
         self.assertIn("International<br>Concert Series", poster)
+
+
+class FeedTests(unittest.TestCase):
+    """concerts.json, read by the School of Music foyer screen."""
+
+    SITE_URL = "https://example.org/notes/"
+
+    def run_build(self, now, site=None, site_url=SITE_URL, images=False):
+        out = Path(self.enterContext(tempfile.TemporaryDirectory()))
+        build.build(out, fetch=site or FakeSite(), now=now, images=images, site_url=site_url)
+        return out
+
+    def feed(self, **kwargs):
+        out = self.run_build(london(2026, 11, 7, 12), **kwargs)
+        return json.loads((out / "concerts.json").read_text(encoding="utf-8"))
+
+    def concert(self, feed, concert_id):
+        return next(c for c in feed["concerts"] if c["id"] == concert_id)
+
+    def test_shape_and_order(self):
+        feed = self.feed()
+        self.assertEqual(feed["version"], 1)
+        self.assertEqual(len(feed["concerts"]), 10)
+        starts = [c["start"] for c in feed["concerts"]]
+        self.assertEqual(starts, sorted(starts))  # soonest first
+        first = feed["concerts"][0]
+        self.assertEqual(
+            {k: first[k] for k in ("id", "title", "start", "end", "timed", "venue", "doors", "admission", "url", "tickets")},
+            {
+                "id": "5520",
+                "title": "Toby Shaer, Archie Moss and Jack Warnock",
+                "start": "2026-11-13T13:05:00+00:00",
+                "end": "2026-11-13T13:55:00+00:00",
+                "timed": True,
+                "venue": "Clothworkers Centenary Concert Hall",
+                "doors": "12:15pm",
+                "admission": "Pay what you can",
+                "url": "https://example.org/notes/programmes/toby-shaer-archie-moss-and-jack-warnock/",
+                "tickets": "https://buytickets.at/leedsuniversity72/2255364/select-date",
+            },
+        )
+
+    def test_works_and_artists(self):
+        pixels = self.concert(self.feed(), "5641")
+        self.assertEqual(
+            pixels["works"],
+            [
+                {"composer": "Frank Bridge", "detail": None, "title": "Phantasy for piano quartet"},
+                {"composer": "Johannes Brahms", "detail": None, "title": "Piano Quartet in C minor, op 60"},
+            ],
+        )
+        self.assertEqual(
+            pixels["artists"],
+            [
+                {"name": "Sophie Rosa", "role": "violin"},
+                {"name": "Vicci Wardman", "role": "viola"},
+                {"name": "Jonathan Aasgaard", "role": "cello"},
+                {"name": "Ian Buckle", "role": "piano"},
+            ],
+        )
+        # Notes are what follows the works, not the works themselves.
+        self.assertTrue(pixels["notes"][0].startswith("Frank Bridge’s Phantasy and Brahms’s Third Piano Quartet"))
+
+    def test_work_details(self):
+        works = notes_for("ensemble-augelletti").works
+        self.assertEqual(
+            (works[2].composer, works[2].detail, works[2].title),
+            ("Johann Sebastian Bach", "(1685-1750) arr. Ensemble Augelletti", "Sonata in G minor, BWV1029"),
+        )
+
+    def test_notes_without_works_are_the_whole_about_text(self):
+        toby = self.concert(self.feed(), "5520")
+        self.assertEqual(toby["works"], [])
+        self.assertTrue(toby["notes"][0].startswith("Toby Shaer, Archie Moss and Jack Warnock are a dynamic trio"))
+        self.assertIn("This concert is in collaboration with Leeds City of Languages Festival.", toby["notes"])
+
+    def test_notes_are_plain_text(self):
+        feed = self.feed()
+        for concert in feed["concerts"]:
+            for entry in concert["notes"]:
+                self.assertNotRegex(entry, r"<[a-z/]", concert["id"])
+                self.assertNotIn("&amp;", entry)
+        dongyang = self.concert(feed, "5573")
+        self.assertNotIn("Watch the video", dongyang["notes"])  # a picture link, not text
+
+    def test_image_is_the_largest_copy_on_the_sites_own_host(self):
+        try:
+            from PIL import Image
+        except ImportError:
+            self.skipTest("Pillow not installed")
+        import io as _io
+
+        class SiteWithPhotos(FakeSite):
+            def __call__(self, url):
+                if re.search(r"\.(png|jpe?g|webp)$", url):
+                    buffer = _io.BytesIO()
+                    Image.new("RGB", (1600, 1000), (0, 131, 132)).save(buffer, "PNG")
+                    return buffer.getvalue()
+                return super().__call__(url)
+
+        pixels = self.concert(self.feed(site=SiteWithPhotos(), images=True), "5641")
+        self.assertRegex(pixels["image"]["src"], r"^https://example\.org/notes/img/[0-9a-f]{16}-1200\.webp$")
+        self.assertEqual((pixels["image"]["width"], pixels["image"]["height"]), (1200, 750))
+
+    def test_no_image(self):
+        self.assertIsNone(self.feed()["concerts"][0]["image"])  # built without photos
+        concert = build.make_concert("1", "X", "https://concerts.leeds.ac.uk/events/x/", dt.date(2026, 6, 5), "1:05pm")
+        concert.picture = build.Picture(files=[("https://concerts.leeds.ac.uk/x.png", 0)])  # no-Pillow fallback
+        self.assertIsNone(build.feed_entry(concert, self.SITE_URL)["image"])
+
+    def test_summer_times_carry_their_offset(self):
+        concert = build.make_concert("1", "X", "https://concerts.leeds.ac.uk/events/x/", dt.date(2026, 6, 5), "1:05pm - 1:55pm")
+        entry = build.feed_entry(concert, self.SITE_URL)
+        self.assertEqual((entry["start"], entry["end"]), ("2026-06-05T13:05:00+01:00", "2026-06-05T13:55:00+01:00"))
+        self.assertIsNone(entry["doors"])
+        self.assertEqual(entry["venue"], "Clothworkers Centenary Concert Hall")
+
+    def test_only_written_with_a_site_url(self):
+        out = self.run_build(london(2026, 11, 7, 12), site_url=None)
+        self.assertFalse((out / "concerts.json").exists())
+
+    def test_generated_time_does_not_change_the_fingerprint(self):
+        first = self.run_build(london(2026, 11, 7, 12, 0))
+        second = self.run_build(london(2026, 11, 7, 12, 30))
+        self.assertNotEqual(
+            json.loads((first / "concerts.json").read_text())["generated"],
+            json.loads((second / "concerts.json").read_text())["generated"],
+        )
+        self.assertEqual((first / "build-hash.txt").read_text(), (second / "build-hash.txt").read_text())
 
 
 if __name__ == "__main__":

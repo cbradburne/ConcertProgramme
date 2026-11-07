@@ -25,6 +25,7 @@ https://cbradburne.github.io/ConcertProgramme/. Once it is connected, that addre
   5. **Notes & biographies** (or **About the concert** when there's no list of works),
   6. a **Next event** panel advertising the following concert, with its own **Book tickets** button.
 - **Watch live** is in the menu on every page. It goes to `youtube.com/@uolconcerts/live`, which YouTube points to the current stream (or the next scheduled one).
+- **`concerts.json`** is a machine-readable list of the same upcoming concerts, soonest first. The **School of Music foyer screen** reads it: the "This Week" board at uolscreens.com checks it at most every 10 minutes and copies the photos across. For each concert it has the title, start and end times (with the UK offset), venue, doors, price, programme and ticket links, the largest photo with its size, artists, works, and the notes as plain-text paragraphs. It's only written when the build is given the site address (`--site-url`), so every link in it is absolute.
 - University of Leeds and International Concert Series branding throughout: the official University logo, the University's **Freight** typefaces, the series teal (#008384) and the series tower icon as the browser/home-screen icon.
 
 ### Where the information comes from
@@ -155,6 +156,7 @@ python -m unittest discover -s tests   # tests use saved copies of the real page
 | Path | Purpose |
 | --- | --- |
 | `build.py` | Reads the concert site, Open Up and YouTube, and writes the site |
+| `concerts.json` (published, not in the repository) | Upcoming concerts as data, for the School of Music foyer screen (uolscreens.com "This Week" board) |
 | `templates/` | Page layout (`base.html`, `header.html`, `footer.html`), styles (`site.css`), the small script (`app.js`) and the poster |
 | `assets/` | University logo, series icon, and the fallback Playfair Display font (SIL Open Font Licence, `assets/fonts/OFL.txt`) |
 | `tests/` | Automated tests, using trimmed copies of the real pages (saved 7 Nov 2026) |
