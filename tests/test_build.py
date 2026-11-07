@@ -369,6 +369,9 @@ class BuildTests(unittest.TestCase):
         self.assertNotIn('href="https://openup.leeds.ac.uk/events/toby-shaer', page)
         self.assertIn('href="https://www.youtube.com/watch?v=6mF3M7acbGE"', page)
         self.assertIn(build.YOUTUBE_LIVE, page)
+        # Newsletter sign-up at the end of every programme.
+        self.assertIn('class="newsletter"', page)
+        self.assertIn(f'href="{build.NEWSLETTER}"', page)
         # "Next event" advertises the following concert with a ticket button.
         band = page[page.index('class="next-band"'):]
         self.assertIn("Dongyang Gozupa", band)
@@ -418,6 +421,8 @@ class BuildTests(unittest.TestCase):
             self.assertIn("for other events across our campus.", html)
             self.assertIn('href="https://openup.leeds.ac.uk/"', html)
             self.assertIn('href="https://openup.leeds.ac.uk/whats-on/"', html)
+            self.assertIn('href="https://concerts.leeds.ac.uk/newsletter-sign-up/"', html)
+            self.assertIn("Sign up to our newsletter", html)
 
     def test_no_events_message_hidden_while_concerts_are_listed(self):
         out, page, _ = self.run_build(london(2026, 11, 7, 12))

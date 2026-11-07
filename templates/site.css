@@ -401,6 +401,17 @@ a:hover { text-decoration-thickness: 2px; }
 .repertoire .work { display: block; margin-top: 4px; font-size: 1.15rem; line-height: 1.4; }
 
 .pending { color: var(--muted); font-style: italic; margin-top: 32px; }
+
+.newsletter {
+  margin: 48px 0 0;
+  padding: 24px 24px 26px;
+  border: 1px solid var(--rule);
+  border-top: 4px solid var(--teal);
+  border-radius: var(--radius);
+  background: var(--surface);
+}
+.newsletter-title { margin: 0 0 6px; font: 600 1.5rem/1.2 var(--display); }
+.newsletter p { margin: 0 0 18px; color: var(--ink-soft); }
 .source { margin: 40px 0 0; font: 500 0.875rem/1.5 var(--sans); }
 .source a { color: var(--muted); }
 
@@ -599,7 +610,7 @@ a:hover { text-decoration-thickness: 2px; }
 /* ---------- Print ---------- */
 
 @media print {
-  .tools, .site-nav, .etiquette, .next-band, .coming-up, .actions, .site-footer { display: none !important; }
+  .tools, .site-nav, .etiquette, .next-band, .coming-up, .actions, .newsletter, .site-footer { display: none !important; }
   .site-header, .prog-hero { background: none; color: #000; }
   .facts dd, .facts dt { color: #000; }
   .hero-media img { filter: none; }

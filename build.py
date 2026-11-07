@@ -57,6 +57,7 @@ LISTING_URL = SITE + "/events/?q=&post_type=tk_events&date-type={date_type}"
 OPENUP = "https://openup.leeds.ac.uk"
 OPENUP_WHATS_ON = OPENUP + "/whats-on/"
 BOX_OFFICE = "https://buytickets.at/leedsuniversity72"  # the series' Ticket Tailor box office
+NEWSLETTER = SITE + "/newsletter-sign-up/"  # the series' newsletter sign-up form
 YOUTUBE_CHANNEL = "https://www.youtube.com/@uolconcerts"
 YOUTUBE_LIVE = YOUTUBE_CHANNEL + "/live"  # YouTube sends this to the current or next stream
 YOUTUBE_FEED = "https://www.youtube.com/feeds/videos.xml?channel_id=UCkFIqzjc8oUuhMBcEfCGZQA"
@@ -1185,6 +1186,11 @@ PLAY_ICON = (
     '<svg class="icon" aria-hidden="true" viewBox="0 0 24 24" width="18" height="18">'
     '<path d="M8 5.5v13l11-6.5z" fill="currentColor"/></svg>'
 )
+MAIL_ICON = (
+    '<svg class="icon" aria-hidden="true" viewBox="0 0 24 24" width="18" height="18">'
+    '<rect x="3.5" y="5.5" width="17" height="13" rx="1.5" fill="none" stroke="currentColor" stroke-width="1.7"/>'
+    '<path d="m4 7 8 6 8-6" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round"/></svg>'
+)
 TICKET_ICON = (
     '<svg class="icon" aria-hidden="true" viewBox="0 0 24 24" width="18" height="18">'
     '<path d="M3.5 7.5A1.5 1.5 0 0 1 5 6h14a1.5 1.5 0 0 1 1.5 1.5v2.25a2.25 2.25 0 0 0 0 4.5'
@@ -1325,10 +1331,20 @@ def render_programme(
   <div class="narrow prog-body">
     <p class="etiquette">Please keep your phone on silent and your screen dimmed during the performance.</p>
 {sections}
+    {render_newsletter(concert.id)}
     <p class="source"><a {external(concert.url)}>This concert on the Concert Series website</a></p>
   </div>
   {render_next_band(following, root)}
 </article>"""
+
+
+def render_newsletter(key: str) -> str:
+    """Newsletter sign-up box at the end of each programme."""
+    return f"""<aside class="newsletter" aria-labelledby="newsletter-{esc(key)}">
+      <h2 class="newsletter-title" id="newsletter-{esc(key)}">Never miss a concert</h2>
+      <p>Sign up to our newsletter to be the first to hear about new concerts.</p>
+      <a class="btn btn-primary" {external(NEWSLETTER)}>{MAIL_ICON}<span>Sign up to our newsletter</span></a>
+    </aside>"""
 
 
 def render_card(concert: Concert, root: str, now: dt.datetime, first: bool = False) -> str:
@@ -1458,10 +1474,12 @@ def render_no_events(root: str, element_id: str, *, heading: str, hidden: bool, 
         title="No events currently listed",
         body=(
             '<p class="notice-lead">Join us again soon for our next event.</p>\n'
+            f'    <p><a {external(NEWSLETTER)}>Sign up to our newsletter</a> to be the first to hear about new concerts.</p>\n'
             f'    <p>Check <a {external(OPENUP + "/")}>openup.leeds.ac.uk</a> for other events across our campus.</p>'
         ),
         actions=(
-            f'<a class="btn btn-primary" {external(OPENUP_WHATS_ON)}>Events across campus</a>'
+            f'<a class="btn btn-primary" {external(NEWSLETTER)}>{MAIL_ICON}<span>Sign up to our newsletter</span></a>'
+            f'<a class="btn btn-secondary" {external(OPENUP_WHATS_ON)}>Events across campus</a>'
             f'<a class="btn btn-secondary" {external(YOUTUBE_CHANNEL + "/streams")}>{PLAY_ICON}<span>Watch past concerts</span></a>'
         ),
         heading=heading,
