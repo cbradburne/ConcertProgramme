@@ -47,6 +47,8 @@ class FakeSite:
             name = "openup-whats-on.html"
         elif url == build.YOUTUBE_FEED:
             name = "youtube-feed.xml"
+        elif url == build.YOUTUBE_STREAMS:
+            name = "youtube-streams.html"
         elif "date-type=" in url:
             if self.listing is not None:
                 return self.listing.encode()
@@ -326,6 +328,70 @@ class OpenUpAndYouTubeTests(unittest.TestCase):
         self.assertIsNone(build.match_stream(self.concert("Student Showcase"), self.videos))
 
 
+class YouTubeLiveTabTests(unittest.TestCase):
+    """The channel's Live tab, read as well as the feed (which YouTube often fails to serve)."""
+
+    NOW = dt.datetime(2026, 11, 14, 21, tzinfo=dt.timezone.utc)  # when the fixture was saved
+
+    def setUp(self):
+        self.videos = build.parse_youtube_streams(fixture("youtube-streams.html"), self.NOW)
+
+    def concert(self, title, day, time):
+        return build.make_concert("1", title, "u", day, time)
+
+    def test_reads_scheduled_and_past_streams(self):
+        by_id = {v.id: v for v in self.videos}
+        self.assertEqual(by_id["dW7Xvnn1JjE"].title, "Connaught Brass")
+        self.assertEqual(by_id["dW7Xvnn1JjE"].around.date(), dt.date(2026, 11, 20))
+        self.assertEqual(by_id["jlXtyh1MTEM"].around, self.NOW - dt.timedelta(days=1))  # "Streamed 1 day ago"
+        self.assertNotIn("MafgZnbkFeg", by_id)  # "Streamed 6 mo ago": too long ago to matter
+
+    def test_finds_the_scheduled_stream(self):
+        video = build.match_stream(self.concert("Connaught Brass", dt.date(2026, 11, 20), "1:05pm"), self.videos)
+        self.assertEqual(video.id, "dW7Xvnn1JjE")
+
+    def test_finds_yesterdays_stream_but_not_an_old_one(self):
+        video = build.match_stream(self.concert("Dongyang Gozupa", dt.date(2026, 11, 13), "7:30pm"), self.videos)
+        self.assertEqual(video.id, "jlXtyh1MTEM")
+        self.assertIsNone(build.match_stream(self.concert("Student Showcase", dt.date(2026, 12, 4), "1:05pm"), self.videos))
+
+    def page(self, *lockups):
+        items = [
+            {"lockupViewModel": {
+                "contentId": vid, "contentType": "LOCKUP_CONTENT_TYPE_VIDEO",
+                "contentImage": {"thumbnailViewModel": {"overlays": [{"thumbnailBottomOverlayViewModel": {"badges": [{"thumbnailBadgeViewModel": {"text": badge}}]}}]}},
+                "metadata": {"lockupMetadataViewModel": {"title": {"content": title}, "metadata": {"contentMetadataViewModel": {"metadataRows": [{"metadataParts": [{"text": {"content": row}}]}]}}}},
+            }}
+            for vid, title, row, badge in lockups
+        ]
+        return "<script>var ytInitialData = " + json.dumps({"contents": items}) + ";</script>"
+
+    def test_us_dates_live_streams_and_the_closest_of_two(self):
+        videos = build.parse_youtube_streams(self.page(
+            ("AAAAAAAAAAA", "Student Showcase", "Scheduled for 12/4/26, 1:00 PM", "Upcoming"),
+            ("BBBBBBBBBBB", "Student Showcase", "Scheduled for 11/12/2026, 13:00", "Upcoming"),
+            ("CCCCCCCCCCC", "Marco Fusi", "12 watching", "LIVE"),
+        ), self.NOW)
+        showcase = build.match_stream(self.concert("Student Showcase", dt.date(2026, 12, 4), "1:05pm"), videos)
+        self.assertEqual(showcase.id, "AAAAAAAAAAA")   # 4 Dec, written the American way
+        showcase = build.match_stream(self.concert("Student Showcase", dt.date(2026, 12, 11), "1:05pm"), videos)
+        self.assertEqual(showcase.id, "BBBBBBBBBBB")   # 11 Dec, the British way
+        live = build.match_stream(self.concert("Marco Fusi", dt.date(2026, 11, 14), "7:30pm"), videos)
+        self.assertEqual(live.id, "CCCCCCCCCCC")
+
+    def test_older_page_layout_with_exact_times(self):
+        start = int(dt.datetime(2026, 11, 20, 13, tzinfo=dt.timezone.utc).timestamp())
+        page = "<script>var ytInitialData = " + json.dumps({"items": [{"videoRenderer": {
+            "videoId": "DDDDDDDDDDD", "title": {"runs": [{"text": "Connaught Brass"}]},
+            "upcomingEventData": {"startTime": str(start)}}}]}) + ";</script>"
+        videos = build.parse_youtube_streams(page, self.NOW)
+        self.assertEqual(videos[0].around, dt.datetime(2026, 11, 20, 13, tzinfo=dt.timezone.utc))
+
+    def test_page_without_data_is_an_error(self):
+        with self.assertRaises(build.BuildError):
+            build.parse_youtube_streams("<html>Before you continue to YouTube</html>", self.NOW)
+
+
 class BuildTests(unittest.TestCase):
     def run_build(self, now, **kwargs):
         site = kwargs.pop("site", FakeSite())
@@ -417,6 +483,14 @@ class BuildTests(unittest.TestCase):
         items = re.findall(r'<li data-upcoming="(\d+)"[^>]*?( hidden)?>', page)
         self.assertEqual(items[0], ("5573", " hidden"))
         self.assertEqual(sum(1 for _, hidden in items if not hidden), build.UPCOMING_SHOWN)
+
+    def test_stream_link_from_the_live_tab_when_the_feed_fails(self):
+        site = FakeSite(broken={"feeds/videos.xml"})
+        out, _, concerts = self.run_build(london(2026, 11, 14, 21), site=site)
+        brass = next(c for c in concerts if c.slug == "connaught-brass")
+        self.assertEqual(brass.stream_url, "https://www.youtube.com/watch?v=dW7Xvnn1JjE")
+        page = (out / "programmes" / "connaught-brass" / "index.html").read_text()
+        self.assertIn('href="https://www.youtube.com/watch?v=dW7Xvnn1JjE"', page)
 
     def test_open_up_or_youtube_down_still_builds(self):
         site = FakeSite(broken={"openup.leeds.ac.uk", "youtube.com"})

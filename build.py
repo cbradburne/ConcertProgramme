@@ -62,6 +62,10 @@ NEWSLETTER = SITE + "/newsletter-sign-up/"  # the series' newsletter sign-up for
 YOUTUBE_CHANNEL = "https://www.youtube.com/@uolconcerts"
 YOUTUBE_LIVE = YOUTUBE_CHANNEL + "/live"  # YouTube sends this to the current or next stream
 YOUTUBE_FEED = "https://www.youtube.com/feeds/videos.xml?channel_id=UCkFIqzjc8oUuhMBcEfCGZQA"
+# The channel's Live tab: lists scheduled, live and past streams. Read as well as the
+# feed, which YouTube often answers with an error.
+YOUTUBE_STREAMS = YOUTUBE_CHANNEL + "/streams?hl=en-GB"
+STREAM_SLACK = dt.timedelta(hours=36)  # the Live tab only gives a stream's date roughly
 INSTAGRAM = "https://www.instagram.com/uolconcerts/"
 FACEBOOK = "https://www.facebook.com/UoLConcerts/"
 USER_AGENT = "ConcertProgrammeNotes/1.0 (+https://github.com/cbradburne/ConcertProgramme)"
@@ -1037,6 +1041,7 @@ class Video:
     title: str
     published: dt.datetime
     views: int
+    around: dt.datetime | None = None  # from the Live tab: roughly when it's on (or was)
 
 
 def parse_youtube_feed(xml_text: str) -> list[Video]:
@@ -1063,19 +1068,117 @@ def parse_youtube_feed(xml_text: str) -> list[Video]:
     return videos
 
 
+def _texts_under(node, key: str) -> list[str]:
+    """Every string stored under `key`, anywhere inside a piece of JSON, in order."""
+    found = []
+    if isinstance(node, dict):
+        for k, value in node.items():
+            if k == key and isinstance(value, str):
+                found.append(value)
+            else:
+                found += _texts_under(value, key)
+    elif isinstance(node, list):
+        for value in node:
+            found += _texts_under(value, key)
+    return found
+
+
+def _stream_date(text: str) -> dt.datetime | None:
+    """The day in "Scheduled for 20/11/2026, 05:00" (en-GB) or "11/20/26, 1:00 PM" (en-US).
+
+    The time is in the reader's time zone, not the concert's, so only the day is used.
+    """
+    m = re.search(r"\b(\d{1,2})/(\d{1,2})/(\d{4}|\d{2})\b", text)
+    if not m:
+        return None
+    a, b, year = int(m[1]), int(m[2]), int(m[3])
+    day, month = (a, b) if len(m[3]) == 4 else (b, a)
+    try:
+        return dt.datetime(year if year > 99 else 2000 + year, month, day, 12, tzinfo=dt.timezone.utc)
+    except ValueError:
+        return None
+
+
+STREAMED_AGO_RE = re.compile(r"Streamed (\d+) (second|sec|minute|min|hour|hr|day|week|wk)s?\b", re.I)
+AGO_UNITS = {"sec": 1, "min": 60, "hr": 3600, "hou": 3600, "day": 86400, "wk": 604800, "wee": 604800}
+
+
+def parse_youtube_streams(html_text: str, now: dt.datetime) -> list[Video]:
+    """The streams on the channel's Live tab, each with roughly when it's on.
+
+    The page carries its data as JSON ("ytInitialData"). Scheduled streams give a
+    date, live ones are on now, and past ones say how long ago they were streamed.
+    """
+    m = re.search(r'(?:var ytInitialData|window\["ytInitialData"\])\s*=\s*', html_text)
+    if not m:
+        raise BuildError("The YouTube Live tab has no ytInitialData")
+    data, _ = json.JSONDecoder().raw_decode(html_text, m.end())
+
+    entries = []  # (id, title, status texts, exact start)
+
+    def walk(node):
+        if isinstance(node, dict):
+            lockup = node.get("lockupViewModel")
+            if isinstance(lockup, dict) and lockup.get("contentType", "LOCKUP_CONTENT_TYPE_VIDEO").endswith("VIDEO"):
+                meta = (lockup.get("metadata") or {}).get("lockupMetadataViewModel") or {}
+                title = (meta.get("title") or {}).get("content", "")
+                texts = _texts_under(meta.get("metadata"), "content") + _texts_under(lockup.get("contentImage"), "text")
+                entries.append((lockup.get("contentId", ""), title, texts, None))
+            renderer = node.get("videoRenderer") or node.get("gridVideoRenderer")
+            if isinstance(renderer, dict):  # the layout YouTube used before 2025
+                title = "".join(_texts_under(renderer.get("title"), "text")) or "".join(
+                    _texts_under(renderer.get("title"), "simpleText")
+                )
+                texts = _texts_under(renderer.get("publishedTimeText"), "simpleText")
+                texts += _texts_under(renderer.get("badges"), "label") + _texts_under(renderer.get("thumbnailOverlays"), "style")
+                start = (renderer.get("upcomingEventData") or {}).get("startTime")
+                exact = dt.datetime.fromtimestamp(int(start), dt.timezone.utc) if str(start).isdigit() else None
+                entries.append((renderer.get("videoId", ""), title, texts, exact))
+            for value in node.values():
+                walk(value)
+        elif isinstance(node, list):
+            for value in node:
+                walk(value)
+
+    walk(data)
+    videos, seen = [], set()
+    for video_id, title, texts, around in entries:
+        if not re.fullmatch(r"[A-Za-z0-9_-]{6,20}", video_id or "") or not title or video_id in seen:
+            continue
+        for text in texts:
+            if around:
+                break
+            if text.startswith("Scheduled for") or text.startswith("Premieres"):
+                around = _stream_date(text)
+            elif text.strip().upper() in ("LIVE", "LIVE NOW") or "watching" in text or text.endswith("LIVE_NOW") or text.endswith("_LIVE"):
+                around = now
+            elif m := STREAMED_AGO_RE.search(text):
+                around = now - dt.timedelta(seconds=int(m[1]) * AGO_UNITS[m[2].lower()[:3]])
+        if around:
+            seen.add(video_id)
+            videos.append(Video(id=video_id, title=title, published=around, views=0, around=around))
+    return videos
+
+
 def match_stream(concert: Concert, videos: list[Video]) -> Video | None:
     """This concert's livestream: same title, scheduled for it or streamed on the day."""
+    rough = []
     for video in videos:
         if title_similarity(video.title, concert.title) < 0.9:
+            continue
+        if video.around is not None:  # from the Live tab: the closest one to the concert
+            gap = abs(video.around - concert.start)
+            if gap <= STREAM_SLACK:
+                rough.append((gap, video))
             continue
         scheduled = video.views == 0 and video.published < concert.start
         streamed = concert.start - dt.timedelta(hours=6) <= video.published <= concert.start + dt.timedelta(days=2)
         if scheduled or streamed:
             return video
-    return None
+    return min(rough, key=lambda pair: pair[0])[1] if rough else None
 
 
-def add_links_and_pictures(fetch: Fetch, concerts: list[Concert]) -> None:
+def add_links_and_pictures(fetch: Fetch, concerts: list[Concert], now: dt.datetime) -> None:
     """Ticket pages and photos from Open Up, and livestreams from YouTube.
 
     These are extras: if either site can't be reached, the page still builds.
@@ -1085,11 +1188,17 @@ def add_links_and_pictures(fetch: Fetch, concerts: list[Concert]) -> None:
     except Exception as exc:
         log.warning("Open Up listing unavailable, using the concert site's links: %s", exc)
         openup = []
+    videos = []
     try:
-        videos = parse_youtube_feed(fetch_text(fetch, YOUTUBE_FEED))
+        videos += parse_youtube_feed(fetch_text(fetch, YOUTUBE_FEED))
     except Exception as exc:
-        log.warning("YouTube feed unavailable, using the channel's live link: %s", exc)
-        videos = []
+        log.info("YouTube feed unavailable, using the Live tab: %s", exc)
+    try:
+        videos += parse_youtube_streams(fetch_text(fetch, YOUTUBE_STREAMS), now)
+    except Exception as exc:
+        log.warning("YouTube Live tab unavailable: %s", exc)
+    if not videos:
+        log.warning("No livestream links this time; the menu's Watch live link still works")
     for concert in concerts:
         event = match_openup(concert, openup)
         if event:
@@ -1876,7 +1985,7 @@ def build(
     out_dir.mkdir(parents=True, exist_ok=True)
     for concert in concerts:
         add_event_details(fetch, concert)
-    add_links_and_pictures(fetch, concerts)
+    add_links_and_pictures(fetch, concerts, now)
     for concert in concerts:
         if images:
             concert.picture = prepare_picture(fetch, concert.image_urls, out_dir, cache_dir)

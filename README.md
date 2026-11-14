@@ -35,7 +35,7 @@ https://cbradburne.github.io/ConcertProgramme/. Once it is connected, that addre
 | Concerts, dates, times, venue, price, notes | Each event page on concerts.leeds.ac.uk |
 | Ticket links | The "Book Tickets" link on the concert's page on concerts.leeds.ac.uk. It goes to the series' Ticket Tailor box office, with `/select-date` added (as Open Up's "Book now" does) so it opens ticket selection directly. The concert's Open Up page is used only if there's no box office link. |
 | Photos | Open Up's **full-size** photo, found by removing the size from the end of the file name (e.g. `photo-600x400.webp` → `photo.webp`, 1507×1000). If there's none, the concert site's event header is used. That one is already full size, because its original upload is only 800×400. |
-| Livestream links | The UOLConcerts YouTube channel's feed, matched by title for streams scheduled for that concert |
+| Livestream links | The UOLConcerts YouTube channel's **Live** tab (and its feed, when YouTube serves it), matched by title and date to streams scheduled for that concert, live now or streamed on the day |
 
 Open Up and YouTube are extras: Open Up supplies the larger photos, and YouTube the livestream links. If either can't be reached, the site still updates without them.
 
@@ -130,7 +130,7 @@ Nothing extra needs filling in, but these patterns are recognised and laid out l
 - Pictures and logos inside the text are left out to keep pages small. YouTube links become "Watch the video".
 - **Book tickets** buttons use the box office link in the event's details on the concert site, so make sure each event has one.
 - For a concert to use **Open Up's larger photo**, give it the **same date and a similar title** on Open Up.
-- For a programme to link to **its own livestream**, give the YouTube stream the **same title** as the concert. Otherwise the menu's *Watch live* still works.
+- For a programme to link to **its own livestream**, schedule the YouTube stream for the **same day** with the **same title** as the concert. It appears on the programme within 30 minutes of being scheduled. Otherwise the menu's *Watch live* still works.
 
 ## Changing the behaviour
 
