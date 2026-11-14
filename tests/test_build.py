@@ -632,5 +632,115 @@ class FeedTests(unittest.TestCase):
         self.assertEqual((first / "build-hash.txt").read_text(), (second / "build-hash.txt").read_text())
 
 
+class OverrideTests(unittest.TestCase):
+    """Edits from the Weekly Poster's Programmes tab (overrides.json)."""
+
+    SITE_URL = "https://example.org/notes/"
+
+    def run_build(self, overrides, now=None):
+        out = Path(self.enterContext(tempfile.TemporaryDirectory()))
+        path = None
+        if overrides is not None:
+            path = out.parent / f"{out.name}-overrides.json"
+            text = overrides if isinstance(overrides, str) else json.dumps({"version": 1, "concerts": overrides})
+            path.write_text(text, encoding="utf-8")
+            self.addCleanup(path.unlink)
+        build.build(out, fetch=FakeSite(), now=now or london(2026, 11, 7, 12), images=False,
+                    site_url=self.SITE_URL, overrides_file=path)
+        return out
+
+    @staticmethod
+    def feed(out, name="concerts.json"):
+        return {c["id"]: c for c in json.loads((out / name).read_text(encoding="utf-8"))["concerts"]}
+
+    def test_simple_fields(self):
+        out = self.run_build({"5520": {
+            "title": "Toby Shaer Trio", "doors": "12:30pm", "admission": "Free",
+            "venue": "Clothworkers Bar", "tickets": "https://example.com/book",
+        }})
+        page = (out / "programmes" / "toby-shaer-archie-moss-and-jack-warnock" / "index.html").read_text()
+        self.assertIn('<h1 class="prog-title">Toby Shaer Trio</h1>', page)
+        for text in ("12:30pm", "Free", "Clothworkers Bar", 'href="https://example.com/book"'):
+            self.assertIn(text, page)
+        entry = self.feed(out)["5520"]
+        self.assertEqual(
+            (entry["title"], entry["doors"], entry["admission"], entry["venue"], entry["tickets"]),
+            ("Toby Shaer Trio", "12:30pm", "Free", "Clothworkers Bar", "https://example.com/book"),
+        )
+        # The What's on card and the home page use the edited title too.
+        self.assertIn("Toby Shaer Trio", (out / "events" / "index.html").read_text())
+
+    def test_source_keeps_the_concert_sites_version(self):
+        out = self.run_build({"5520": {"title": "Toby Shaer Trio", "notes": ["Rewritten."]}})
+        source = self.feed(out, "programme-source.json")["5520"]
+        self.assertEqual(source["title"], "Toby Shaer, Archie Moss and Jack Warnock")
+        self.assertTrue(source["notes"][0].startswith("Toby Shaer, Archie Moss and Jack Warnock are a dynamic trio"))
+        self.assertEqual(source["event"], "https://concerts.leeds.ac.uk/events/toby-shaer-archie-moss-and-jack-warnock/")
+        self.assertIn("intro", source)
+
+    def test_artists_works_intro_and_notes(self):
+        out = self.run_build({"5520": {
+            "artists": [{"name": "Archie Moss", "role": "button accordion"}, {"name": "Toby Shaer", "role": ""}],
+            "works": [{"composer": "Trad.", "detail": "arr. Shaer", "title": "The Silver Spear"}],
+            "intro": ["Tonight’s set, in order:"],
+            "notes": ["First paragraph.", "Second <b>paragraph</b>\nwith a line break."],
+        }})
+        page = (out / "programmes" / "toby-shaer-archie-moss-and-jack-warnock" / "index.html").read_text()
+        self.assertIn('<span class="role">button accordion</span>', page)
+        self.assertIn(">Repertoire</h2>", page)
+        self.assertIn("<p>Tonight’s set, in order:</p>", page)
+        self.assertIn('<span class="composer">Trad.</span> <span class="detail">arr. Shaer</span>'
+                      '<span class="work">The Silver Spear</span>', page)
+        self.assertIn(">Notes &amp; biographies</h2>", page)  # it has works now
+        self.assertIn("<p>Second &lt;b&gt;paragraph&lt;/b&gt;<br>with a line break.</p>", page)
+        self.assertNotIn("dynamic trio", page)
+        entry = self.feed(out)["5520"]
+        self.assertEqual(entry["artists"], [{"name": "Archie Moss", "role": "button accordion"},
+                                            {"name": "Toby Shaer", "role": ""}])
+        self.assertEqual(entry["works"], [{"composer": "Trad.", "detail": "arr. Shaer", "title": "The Silver Spear"}])
+        self.assertEqual(entry["notes"], ["First paragraph.", "Second <b>paragraph</b>\nwith a line break."])
+
+    def test_removing_the_works(self):
+        out = self.run_build({"5641": {"works": [], "intro": []}})
+        page = (out / "programmes" / "pixels-ensemble-6" / "index.html").read_text()
+        self.assertNotIn(">Repertoire</h2>", page)
+        self.assertIn(">About the concert</h2>", page)
+        self.assertEqual(self.feed(out)["5641"]["works"], [])
+
+    def test_untouched_fields_and_concerts_stay_as_the_concert_site_has_them(self):
+        out = self.run_build({"5520": {"doors": "12:30pm"}, "no-such-concert": {"title": "Ignored"}})
+        feed = self.feed(out)
+        self.assertEqual(feed["5520"]["title"], "Toby Shaer, Archie Moss and Jack Warnock")
+        self.assertEqual(feed["5520"]["admission"], "Pay what you can")
+        source = self.feed(out, "programme-source.json")["5641"]
+        self.assertEqual(feed["5641"], {k: v for k, v in source.items() if k not in ("intro", "event")})
+        self.assertNotIn("Ignored", (out / "events" / "index.html").read_text())
+
+    def test_bad_values_are_ignored(self):
+        out = self.run_build({"5520": {"title": "  ", "tickets": "javascript:alert(1)", "works": "not a list",
+                                       "artists": [{"role": "no name"}]}})
+        entry = self.feed(out)["5520"]
+        self.assertEqual(entry["title"], "Toby Shaer, Archie Moss and Jack Warnock")
+        self.assertEqual(entry["tickets"], "https://buytickets.at/leedsuniversity72/2255364/select-date")
+        self.assertEqual(entry["artists"], [])  # an artists list was given, but with no usable names
+
+    def test_blank_doors_and_no_tickets(self):
+        out = self.run_build({"5520": {"doors": "", "tickets": ""}})
+        entry = self.feed(out)["5520"]
+        self.assertIsNone(entry["doors"])
+        self.assertIsNone(entry["tickets"])
+
+    def test_a_broken_file_stops_the_build(self):
+        with self.assertRaises(build.BuildError):
+            self.run_build("{not json")
+        with self.assertRaises(build.BuildError):
+            self.run_build('{"version": 1}')
+
+    def test_no_file_means_no_changes(self):
+        out = self.run_build(None)
+        self.assertEqual(self.feed(out), {k: {f: v for f, v in c.items() if f not in ("intro", "event")}
+                                          for k, c in self.feed(out, "programme-source.json").items()})
+
+
 if __name__ == "__main__":
     unittest.main()

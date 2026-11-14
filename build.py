@@ -612,6 +612,7 @@ class Notes:
     repertoire_html: str = ""  # the works, with any introduction before them
     about_html: str = ""  # everything after the works: notes and biographies
     works: list[Work] = field(default_factory=list)
+    intro_text: list[str] = field(default_factory=list)  # text in the repertoire section, as plain-text entries
     about_text: list[str] = field(default_factory=list)  # about_html as plain-text entries
 
 
@@ -699,6 +700,7 @@ def read_notes(container: Node | None) -> Notes:
         repertoire_html=group_items(items[: last_work + 1]),
         about_html=group_items(after),
         works=[item.work for item in items if item.work],
+        intro_text=[item.text for item in items[: last_work + 1] if item.text],
         about_text=[item.text for item in after if item.text],
     )
 
@@ -1160,6 +1162,109 @@ def prepare_picture(
             files.append((f"img/{name}", width, height))
         return Picture([(p, w) for p, w, _ in files], files[-1][1], files[-1][2])
     return None
+
+
+# --------------------------------------------------------------------------
+# Edits made in the Weekly Poster's Programmes tab (overrides.json)
+# --------------------------------------------------------------------------
+#
+# The poster (uolscreens.com) commits overrides.json to this repository. Each
+# concert's entry holds only the fields someone changed; everything else keeps
+# coming from the concert site. A "base" entry (what the concert site said at
+# the time) is for the editor and is ignored here.
+#
+#   {"version": 1, "concerts": {"5520": {"title": "...", "doors": "12:30pm",
+#     "artists": [{"name": "...", "role": "..."}],
+#     "works": [{"composer": "...", "detail": "...", "title": "..."}],
+#     "intro": ["paragraph", ...], "notes": ["paragraph", ...]}}}
+
+OVERRIDES_FILE = ROOT / "overrides.json"
+OVERRIDE_TEXT = {"title": 140, "venue": 80, "doors": 40, "admission": 80}
+HTTPS_LINK_RE = re.compile(r"https://[^\s\"<>]+")
+
+
+def load_overrides(path: Path | None) -> dict[str, dict]:
+    """The editor's changes, by concert id. A broken file stops the build."""
+    if path is None or not path.exists():
+        return {}
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, ValueError) as exc:
+        raise BuildError(f"{path.name} couldn't be read: {exc}") from exc
+    concerts = data.get("concerts") if isinstance(data, dict) else None
+    if not isinstance(concerts, dict):
+        raise BuildError(f"{path.name} has no \"concerts\" section.")
+    return {str(key): value for key, value in concerts.items() if isinstance(value, dict)}
+
+
+def _strings(value, limit: int, most: int) -> list[str] | None:
+    if not isinstance(value, list):
+        return None
+    out = [item.strip()[:limit] for item in value if isinstance(item, str) and item.strip()]
+    return out[:most]
+
+
+def paragraphs_html(paragraphs: list[str]) -> str:
+    return "\n".join(
+        "<p>" + "<br>".join(html.escape(line, quote=False) for line in p.split("\n")) + "</p>"
+        for p in paragraphs
+    )
+
+
+def apply_override(concert: Concert, edit: dict) -> list[str]:
+    """Put the editor's changes over what the concert site said. Returns what changed."""
+    changed = []
+    for key, limit in OVERRIDE_TEXT.items():
+        value = edit.get(key)
+        if isinstance(value, str) and (value.strip() or key != "title"):
+            setattr(concert, key, value.strip()[:limit])
+            changed.append(key)
+    tickets = edit.get("tickets")
+    if isinstance(tickets, str) and (tickets.strip() == "" or HTTPS_LINK_RE.fullmatch(tickets.strip())):
+        concert.ticket_url, concert.openup_url = tickets.strip(), ""
+        changed.append("tickets")
+
+    notes = concert.notes
+    if isinstance(edit.get("artists"), list):
+        notes.artists = [
+            (a["name"].strip()[:80], str(a.get("role", "")).strip()[:80])
+            for a in edit["artists"][:40]
+            if isinstance(a, dict) and isinstance(a.get("name"), str) and a["name"].strip()
+        ]
+        changed.append("artists")
+    if isinstance(edit.get("works"), list):
+        notes.works = [
+            Work(
+                composer=str(w.get("composer", "")).strip()[:100],
+                detail=str(w.get("detail", "")).strip()[:80],
+                title_runs=[Run(w["title"].strip()[:300])],
+            )
+            for w in edit["works"][:60]
+            if isinstance(w, dict) and isinstance(w.get("title"), str) and w["title"].strip()
+        ]
+        changed.append("works")
+    intro = _strings(edit.get("intro"), 4000, 60)
+    if intro is not None:
+        notes.intro_text = intro
+        changed.append("intro")
+    if "works" in changed or "intro" in changed:
+        works = [Item("work", render_work(work), work=work) for work in notes.works]
+        parts = [paragraphs_html(notes.intro_text), group_items(works)]
+        notes.repertoire_html = "\n".join(part for part in parts if part)
+    about = _strings(edit.get("notes"), 4000, 60)
+    if about is not None:
+        notes.about_text = about
+        notes.about_html = paragraphs_html(about)
+        changed.append("notes")
+    return changed
+
+
+def source_entry(concert: Concert, site_url: str) -> dict:
+    """What the concert site says, before any edits: for the poster's editor."""
+    entry = feed_entry(concert, site_url)
+    entry["intro"] = list(concert.notes.intro_text)
+    entry["event"] = concert.url
+    return entry
 
 
 # --------------------------------------------------------------------------
@@ -1758,6 +1863,7 @@ def build(
     site_url: str | None = None,
     cache_dir: Path | None = None,
     images: bool = True,
+    overrides_file: Path | None = None,
 ) -> list[Concert]:
     now = now or dt.datetime.now(dt.timezone.utc)
     concerts = upcoming_concerts(fetch, now)[:MAX_PROGRAMMES]
@@ -1782,6 +1888,16 @@ def build(
             "yes" if concert.stream_url else "-",
         )
 
+    # The editor's changes go on top of the concert site; the untouched
+    # version is published too, so the editor can show and restore it.
+    source = [source_entry(c, site_url) for c in concerts] if site_url else []
+    overrides = load_overrides(overrides_file)
+    for concert in concerts:
+        if concert.id in overrides:
+            changed = apply_override(concert, overrides[concert.id])
+            if changed:
+                log.info("  edited in the Programmes tab: %s (%s)", concert.title, ", ".join(changed))
+
     current = current_concert(concerts, now)
     log.info("Showing now: %s", current.title if current else "(no upcoming concert)")
     copy_assets(out_dir)
@@ -1801,6 +1917,10 @@ def build(
         (out_dir / "404.html").write_text(build_not_found(site_url, now), encoding="utf-8")
         write_qr_and_poster(site_url, out_dir)
         write_feed(concerts, site_url, now, out_dir)
+        (out_dir / "programme-source.json").write_text(
+            json.dumps({"version": 1, "concerts": source}, ensure_ascii=False, indent=2) + "\n",
+            encoding="utf-8",
+        )
     write_fingerprint(out_dir)
     return concerts
 
@@ -1830,7 +1950,13 @@ def main(argv: list[str] | None = None) -> int:
         if not site_url.endswith("/"):
             site_url += "/"
     try:
-        build(args.out, site_url=site_url, cache_dir=args.cache, images=not args.no_images)
+        build(
+            args.out,
+            site_url=site_url,
+            cache_dir=args.cache,
+            images=not args.no_images,
+            overrides_file=OVERRIDES_FILE,
+        )
     except BuildError as exc:
         log.error("Build failed, the published site has not been changed: %s", exc)
         return 1
