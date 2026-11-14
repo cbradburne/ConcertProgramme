@@ -53,6 +53,14 @@ The home page contains the next four concerts, and a tiny script picks the right
 - Edits to an event on the concert site appear within 30 minutes. To update straight away, use **Actions → Update programme notes → Run workflow**.
 - If the concert website is down or its layout changes, the run fails, the **last good version stays online**, and the failed run shows up in the Actions tab.
 
+### Correcting a programme
+
+Sign in to the editor at **uolscreens.com** (press **E**) and open the **Programmes** tab. It lists every upcoming concert as this site has it, and you can change the title, venue, doors, price, ticket link, artists, repertoire, the text above the works, and the notes. Your version replaces the concert site's on the programme page, What's on, the home page and `concerts.json`. Fields you don't change keep updating from the concert site.
+
+Each save is a commit to `overrides.json` in this repository. The commit starts a rebuild straight away, so the change is live in about a minute, and every edit is recorded in the history and can be undone. The tab shows the concert site's version next to anything you've changed, with a button to go back to it, and warns you if the concert site has changed a field since you edited it. Setting up the tab's GitHub access key is described in the Weekly Poster's README, under "Programme edits".
+
+`overrides.json` can also be edited by hand on GitHub: one entry per concert id, holding only the changed fields, in the same shapes as `concerts.json` (`notes` and `intro` are lists of paragraphs). The build ignores `base` (the tab's record of what the concert site said), entries for concerts that are no longer listed, and anything it doesn't recognise. If the file isn't valid JSON, the build stops and the last good version stays online.
+
 ### Designed for the concert hall, and light on energy
 
 - It follows the phone's dark mode, and there's a light/dark button; dark mode also dims photos. A text-size button offers three sizes. Both settings are remembered on that phone only.
@@ -157,6 +165,8 @@ python -m unittest discover -s tests   # tests use saved copies of the real page
 | --- | --- |
 | `build.py` | Reads the concert site, Open Up and YouTube, and writes the site |
 | `concerts.json` (published, not in the repository) | Upcoming concerts as data, for the School of Music foyer screen (uolscreens.com "This Week" board) |
+| `programme-source.json` (published, not in the repository) | The same, before any corrections, plus the text above the works and the concert site's page: what the Programmes tab compares against |
+| `overrides.json` | Corrections made in the Programmes tab at uolscreens.com (created by the first save) |
 | `templates/` | Page layout (`base.html`, `header.html`, `footer.html`), styles (`site.css`), the small script (`app.js`) and the poster |
 | `assets/` | University logo, series icon, and the fallback Playfair Display font (SIL Open Font Licence, `assets/fonts/OFL.txt`) |
 | `tests/` | Automated tests, using trimmed copies of the real pages (saved 7 Nov 2026) |
