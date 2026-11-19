@@ -1481,6 +1481,23 @@ def render_picture(picture: Picture | None, root: str, sizes: str, eager: bool =
     return f"<img {' '.join(attrs)}>"
 
 
+BANNER_RATIO = 2.4  # photos at least this wide for their height are shown full width
+
+
+def is_banner(picture: Picture | None) -> bool:
+    """A wide banner photo (Open Up's are about 3:1), shown whole across the page."""
+    return bool(picture and picture.width and picture.height and picture.width / picture.height >= BANNER_RATIO)
+
+
+def picture_fill(picture: Picture | None, root: str) -> str:
+    """A style attribute giving a box the photo's smallest file, blurred behind the photo itself."""
+    if not picture or not picture.files:
+        return ""
+    path = picture.files[0][0]
+    path = path if path.startswith("http") else root + path
+    return f' style="--fill: url(&quot;{esc(path)}&quot;)"'
+
+
 def programme_href(concert: Concert, root: str) -> str:
     return f"{root}programmes/{concert.slug}/"
 
@@ -1527,10 +1544,12 @@ def render_next_band(concert: Concert | None, root: str) -> str:
     artists = ", ".join(
         name for name, _ in concert.notes.artists[:4] if title_similarity(name, concert.title) < 1
     )
+    banner = is_banner(concert.picture)
+    sizes = "(min-width: 760px) 640px, 100vw" if banner else "(min-width: 760px) 420px, 100vw"
     return f"""
 <section class="next-band" aria-labelledby="next-{concert.id}">
-  <div class="wide next-inner">
-    <a class="next-media" href="{programme_href(concert, root)}" tabindex="-1" aria-hidden="true">{render_picture(concert.picture, root, "(min-width: 760px) 420px, 100vw")}</a>
+  <div class="wide next-inner{" is-banner" if banner else ""}">
+    <a class="next-media" href="{programme_href(concert, root)}" tabindex="-1" aria-hidden="true">{render_picture(concert.picture, root, sizes)}</a>
     <div class="next-text">
       <p class="kicker">Next event</p>
       <h2 class="next-title" id="next-{concert.id}"><a href="{programme_href(concert, root)}">{esc(concert.title)}</a></h2>
@@ -1577,11 +1596,13 @@ def render_programme(
         "Please check back closer to the day.</p>"
     )
     data = f'data-concert="{esc(concert.id)}" ' if switchable else 'data-programme '
+    banner = is_banner(concert.picture)
+    sizes = "(min-width: 1240px) 1184px, 100vw" if banner else "(min-width: 960px) 560px, 100vw"
     return f"""
 <article class="programme" id="concert-{esc(concert.id)}" {data}{timing_attrs(concert)}{"" if visible else " hidden"}>
   <header class="prog-hero">
-    <div class="wide hero-inner">
-      <figure class="hero-media">{render_picture(concert.picture, root, "(min-width: 960px) 560px, 100vw", eager)}</figure>
+    <div class="wide hero-inner{" is-banner" if banner else ""}">
+      <figure class="hero-media">{render_picture(concert.picture, root, sizes, eager)}</figure>
       <div class="hero-text">
         <p class="status" data-status data-default="{default}">{label}</p>
         <h1 class="prog-title">{esc(concert.title)}</h1>
@@ -1618,7 +1639,7 @@ def render_card(concert: Concert, root: str, now: dt.datetime, first: bool = Fal
     href = programme_href(concert, root)
     return f"""
 <li class="card{" is-next" if first else ""}" {timing_attrs(concert)}>
-  <a class="card-media" href="{href}" tabindex="-1" aria-hidden="true">{render_picture(concert.picture, root, "(min-width: 1100px) 360px, (min-width: 700px) 50vw, 100vw")}</a>
+  <a class="card-media" href="{href}" tabindex="-1" aria-hidden="true"{picture_fill(concert.picture, root)}>{render_picture(concert.picture, root, "(min-width: 1100px) 360px, (min-width: 700px) 50vw, 100vw")}</a>
   <div class="card-body">
     <p class="card-when"><span class="status" data-status data-default="">{status_label(concert, now)}</span><time datetime="{iso(concert.start)}">{esc(when)}</time></p>
     <h2 class="card-title"><a href="{href}">{esc(concert.title)}</a></h2>
